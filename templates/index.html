@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Capa Insights</title>
+    <!-- Modern Fonts & Icons -->
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Fira+Code:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+    />
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='styles.css') }}"
+    />
+  </head>
+  <body>
+    <!-- Dynamic Glassmorphism Background -->
+    <div class="background-orbs">
+      <div class="orb orb-1"></div>
+      <div class="orb orb-2"></div>
+      <div class="orb orb-3"></div>
+    </div>
+
+    <!-- Main Application Container -->
+    <main class="app-container glass-panel">
+      <!-- Sidebar Navigation -->
+      <nav class="sidebar">
+        <div class="brand">
+          <i class="fa-solid fa-code-branch"></i>
+          <h2>Capa</h2>
+        </div>
+
+        <ul class="nav-links">
+          <li class="active" data-view="evaluate">
+            <i class="fa-solid fa-bullseye"></i> Job-Fit Evaluator
+          </li>
+          <li data-view="team">
+            <i class="fa-solid fa-people-group"></i> Team Builder
+          </li>
+          <li data-view="profile">
+            <i class="fa-solid fa-user-astronaut"></i> Intelligence Profile
+          </li>
+          <li data-view="growth">
+            <i class="fa-solid fa-arrow-trend-up"></i> Growth Plan
+          </li>
+          <li data-view="interview">
+            <i class="fa-solid fa-clipboard-question"></i> AI Technical Interviewer
+          </li>
+          <li data-view="nl-search">
+            <i class="fa-solid fa-magnifying-glass"></i> NL Search
+          </li>
+        </ul>
+
+        <div class="sidebar-footer">
+          <div class="status-indicator">
+            <span class="pulse green"></span> Engine Online
+          </div>
+        </div>
+      </nav>
+
+      <!-- Right Content Area -->
+      <section class="content-area">
+        <!-- Dynamic Form Headers based on view -->
+        <header class="view-header">
+          <h1 id="view-title">Evaluating Job-Fit</h1>
+          <p id="view-desc">
+            Compare a deterministic capability vector against a structured job
+            description.
+          </p>
+        </header>
+
+        <!-- Input Controls Form -->
+        <div class="controls glass-inner">
+          <!-- Dynamic Inputs (Toggled via JS) -->
+          <div class="input-group" id="group-username">
+            <label>GitHub Username</label>
+            <div class="input-wrapper">
+              <i class="fa-brands fa-github"></i>
+              <input
+                type="text"
+                id="input-username"
+                placeholder="e.g. darkraider01"
+                autocomplete="off"
+              />
+            </div>
+          </div>
+
+          <div class="input-group" id="group-job">
+            <label>Job Description</label>
+            <textarea
+              id="input-job"
+              placeholder="Paste the job description or role requirements here..."
+            ></textarea>
+          </div>
+
+          <div class="input-group" id="group-project" style="display: none">
+            <label>Project Description</label>
+            <textarea
+              id="input-project"
+              placeholder="Describe the application you want to build..."
+            ></textarea>
+          </div>
+
+          <div class="input-group" id="group-query" style="display: none">
+            <label>Natural Language Query</label>
+            <div class="input-wrapper">
+              <i class="fa-solid fa-sparkles"></i>
+              <input
+                type="text"
+                id="input-query"
+                placeholder="e.g. Seeking a seasoned rust developer..."
+                autocomplete="off"
+              />
+            </div>
+          </div>
+
+          <button id="run-btn" class="primary-btn">
+            <i class="fa-solid fa-bolt"></i> Run Pipeline
+          </button>
+        </div>
+
+        <!-- Capabilities Container -->
+        <div id="capabilities-container" style="display: none;" class="glass-inner">
+          <div class="cap-header">
+            <h4><i class="fa-solid fa-shapes"></i> Extracted Capabilities</h4>
+          </div>
+          <div id="capabilities-tags" class="cap-tags">
+            <!-- Badges injected via JS -->
+          </div>
+        </div>
+
+        <!-- Terminal Output Area -->
+        <div class="terminal-container">
+          <div class="terminal-header">
+            <div class="mac-btns">
+              <span class="close"></span>
+              <span class="min"></span>
+              <span class="max"></span>
+            </div>
+            <div class="terminal-title">pipeline.log</div>
+          </div>
+          <!-- Pre format for raw stdout mimicking terminal -->
+          <pre
+            id="terminal-output"
+            class="terminal-body"
+          ><span class="cmd-prompt">~/search_engine $</span> Ready. Select a tool and click Run Pipeline to begin.</pre>
+
+          <!-- Loading State Overlay -->
+          <div id="loading-overlay" class="loading-overlay hidden">
+            <div class="loader"></div>
+            <p>Aggregating Deterministic Signals & Prompting Gemini...</p>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <script src="{{ url_for('static', filename='main.js') }}"></script>
+  </body>
+</html>

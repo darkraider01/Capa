@@ -1,0 +1,181 @@
+{
+  "index_settings": {
+    "docstore_compression": "lz4",
+    "docstore_blocksize": 16384
+  },
+  "segments": [
+    {
+      "segment_id": "d4f550eb-c30e-4f63-8b2a-e027a7555a0c",
+      "max_doc": 239,
+      "deletes": null
+    },
+    {
+      "segment_id": "48599374-2abd-4793-871d-59f8d8ce3dde",
+      "max_doc": 230,
+      "deletes": null
+    },
+    {
+      "segment_id": "95911595-f369-4700-8372-31f9f1ae1571",
+      "max_doc": 215,
+      "deletes": null
+    },
+    {
+      "segment_id": "bfe08ab0-e1ed-4931-886d-0e046a1defc4",
+      "max_doc": 202,
+      "deletes": null
+    },
+    {
+      "segment_id": "a68bed91-20ed-476d-ab4d-bb6b02fb44c5",
+      "max_doc": 196,
+      "deletes": null
+    },
+    {
+      "segment_id": "dc0299cf-7982-4c38-b8d3-67a91057e65c",
+      "max_doc": 183,
+      "deletes": null
+    },
+    {
+      "segment_id": "f1460a46-1295-4219-b602-f92e59c3b238",
+      "max_doc": 77,
+      "deletes": null
+    },
+    {
+      "segment_id": "6f806646-7504-4ab6-a243-5464e486b0c3",
+      "max_doc": 66,
+      "deletes": null
+    },
+    {
+      "segment_id": "c353f09a-2154-4dfb-806e-4a73ca2bcfae",
+      "max_doc": 7,
+      "deletes": null
+    },
+    {
+      "segment_id": "0f92e3b5-2f05-411d-83be-d7bbca6a2489",
+      "max_doc": 3,
+      "deletes": null
+    },
+    {
+      "segment_id": "d5aece73-0b76-4448-be44-9ce58f567bc6",
+      "max_doc": 3,
+      "deletes": null
+    },
+    {
+      "segment_id": "402a228b-0352-4b68-97e7-422bafc0c840",
+      "max_doc": 1,
+      "deletes": null
+    },
+    {
+      "segment_id": "7d0c232e-c0d9-4b0b-ad81-62e19ac0c9ff",
+      "max_doc": 1,
+      "deletes": null
+    },
+    {
+      "segment_id": "516acc3c-40a0-4a7a-85be-36a8932dfac8",
+      "max_doc": 1,
+      "deletes": null
+    },
+    {
+      "segment_id": "74366af8-ec7b-4b88-9939-e629bec14b94",
+      "max_doc": 1,
+      "deletes": null
+    }
+  ],
+  "schema": [
+    {
+      "name": "entity_id",
+      "type": "text",
+      "options": {
+        "indexing": {
+          "record": "basic",
+          "fieldnorms": true,
+          "tokenizer": "raw"
+        },
+        "stored": true,
+        "fast": false
+      }
+    },
+    {
+      "name": "capability_type",
+      "type": "text",
+      "options": {
+        "indexing": {
+          "record": "basic",
+          "fieldnorms": true,
+          "tokenizer": "raw"
+        },
+        "stored": true,
+        "fast": false
+      }
+    },
+    {
+      "name": "tier",
+      "type": "text",
+      "options": {
+        "indexing": {
+          "record": "basic",
+          "fieldnorms": true,
+          "tokenizer": "raw"
+        },
+        "stored": true,
+        "fast": false
+      }
+    },
+    {
+      "name": "confidence",
+      "type": "f64",
+      "options": {
+        "indexed": false,
+        "fieldnorms": false,
+        "fast": true,
+        "stored": true
+      }
+    },
+    {
+      "name": "normalized_score",
+      "type": "f64",
+      "options": {
+        "indexed": false,
+        "fieldnorms": false,
+        "fast": true,
+        "stored": true
+      }
+    },
+    {
+      "name": "timestamp",
+      "type": "i64",
+      "options": {
+        "indexed": false,
+        "fieldnorms": false,
+        "fast": true,
+        "stored": true
+      }
+    },
+    {
+      "name": "evidence_keywords",
+      "type": "text",
+      "options": {
+        "indexing": {
+          "record": "position",
+          "fieldnorms": true,
+          "tokenizer": "default"
+        },
+        "stored": true,
+        "fast": false
+      }
+    },
+    {
+      "name": "evidence_repos",
+      "type": "text",
+      "options": {
+        "indexing": {
+          "record": "position",
+          "fieldnorms": true,
+          "tokenizer": "default"
+        },
+        "stored": true,
+        "fast": false
+      }
+    }
+  ],
+  "opstamp": 1440
+}

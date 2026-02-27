@@ -1,0 +1,91 @@
+# Multi-Entity User Lists for Search Engine Testing
+
+# Frontend-focused developers
+[[user_lists]]
+category = "frontend"
+description = "React, Vue, CSS, UI/UX specialists"
+users = [
+    "gaearon",           # React core team
+    "addyosmani",        # Chrome DevRel, performance
+    "sindresorhus",      # Open source maintainer
+    "tj",                # Express.js, many tools
+    "paulirish",         # Chrome DevTools
+    "wesbos",            # JavaScript educator
+    "kentcdodds",        # Testing, React
+    "sarah_edo",         # Vue core team
+    "chriscoyier",       # CSS-Tricks
+    "mdo",               # Bootstrap creator
+]
+
+# ML/AI engineers
+[[user_lists]]
+category = "ml_ai"
+description = "TensorFlow, PyTorch, ML research"
+users = [
+    "fchollet",          # Keras creator
+    "karpathy",          # Tesla AI, educator
+    "jeremyphoward",     # fast.ai
+    "lexfridman",        # MIT AI researcher
+    "hardmaru",          # Google Brain
+    "goodfeli",          # Ian Goodfellow (GANs)
+    "soumith",           # PyTorch
+    "ylecun",            # Yann LeCun
+]
+
+# DevOps/Infrastructure engineers
+[[user_lists]]
+category = "devops"
+description = "Kubernetes, Docker, Terraform, distributed systems"
+users = [
+    "kelseyhightower",   # Kubernetes advocate
+    "jessfraz",          # Docker, security
+    "mitchellh",         # HashiCorp (Terraform, Vault)
+    "brendangregg",      # Performance engineering
+    "jpetazzo",          # Docker captain
+    "ahmetb",            # Google Cloud, kubectl
+    "thockin",           # Kubernetes networking
+    "philips",           # CoreOS, etcd
+]
+
+# Algorithm specialists
+[[user_lists]]
+category = "algorithms"
+description = "Competitive programming, data structures"
+users = [
+    "williamfiset",      # Algorithm visualizations
+    "mission-peace",     # Interview prep
+    "kamyu104",          # LeetCode solutions
+    "haoel",             # LeetCode solutions
+    "labuladong",        # Algorithm patterns
+]
+
+# Systems programming
+[[user_lists]]
+category = "systems"
+description = "Rust, C++, low-level programming"
+users = [
+    "BurntSushi",        # ripgrep, Rust tools
+    "dtolnay",           # Rust serde
+    "alexcrichton",      # Rust core team
+    "matklad",           # rust-analyzer
+    "jonhoo",            # Rust educator
+]
+
+# Database/Storage
+[[user_lists]]
+category = "database"
+description = "Database internals, storage engines"
+users = [
+    "antirez",           # Redis creator
+    "aphyr",             # Jepsen (distributed systems testing)
+    "ept",               # Martin Kleppmann (DDIA)
+]
+
+# Noise/Toy projects (for testing)
+[[user_lists]]
+category = "noise"
+description = "Low activity, random repos, testing diversity"
+users = [
+    "octocat",           # GitHub mascot
+    "defunkt",           # GitHub founder (less active)
+]

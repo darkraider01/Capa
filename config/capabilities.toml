@@ -1,0 +1,222 @@
+
+# ─────────────────────────────────────────────────────────────
+# CAPABILITY TAXONOMY — 18 capabilities across 4 categories
+# Each capability defines signals across all 6 evidence channels.
+# ─────────────────────────────────────────────────────────────
+
+[negative_signals]
+keywords = ["leetcode", "adventofcode", "advent-of-code", "competitive", "competitive-programming", "hackerrank", "interview-prep"]
+
+# ═══════════════════════════════
+# CATEGORY 1 — SYSTEMS & LOW-LEVEL
+# ═══════════════════════════════
+
+[[capabilities]]
+id = "DistributedAlgorithms"
+display_name = "Distributed Algorithms"
+meta_category = "Systems"
+keywords = { strict = ["raft", "paxos", "consensus", "crdt", "gossip"], soft = ["distributed", "cluster", "leader election", "quorum", "shard", "replicated"] }
+core_dependencies = ["raft", "raft-rs", "hashicorp/raft", "zookeeper"]
+ecosystem_dependencies = ["consul", "etcd-client"]
+file_tokens = ["raft", "paxos", "quorum", "gossip", "crdt"]
+folders = ["consensus", "raft", "quorum"]
+language_hints = ["Go", "Rust", "Java", "C++"]
+
+[[capabilities]]
+id = "ConcurrentProgramming"
+display_name = "Concurrent Programming"
+meta_category = "Systems"
+keywords = { strict = ["tokio", "rayon", "crossbeam", "lock-free", "actor"], soft = ["async", "await", "mutex", "rwlock", "parallel", "concurrent"] }
+core_dependencies = ["tokio", "rayon", "crossbeam", "smol", "flume", "parking_lot"]
+ecosystem_dependencies = ["futures", "actix", "erlang"]
+file_tokens = ["scheduler", "executor", "threadpool", "rwlock", "actor"]
+folders = ["executors", "workers"]
+language_hints = ["Rust", "Go", "Erlang", "Scala"]
+
+[[capabilities]]
+id = "RuntimeSystems"
+display_name = "Runtime Systems"
+meta_category = "Systems"
+keywords = { strict = ["bytecode", "garbage collection", "memory allocator", "wasm runtime", "v8", "jit"], soft = ["interpreter", "vm", "allocator", "heap", "pointer"] }
+core_dependencies = ["cranelift", "wasmtime", "wasmer", "v8", "mimalloc", "jemalloc", "boehm-gc"]
+ecosystem_dependencies = ["bumpalo"]
+file_tokens = ["bytecode", "allocator", "gc", "jit", "trampoline", "arena"]
+folders = ["runtime", "allocator", "interpreter", "gc"]
+language_hints = ["Rust", "C", "C++", "Assembly"]
+
+[[capabilities]]
+id = "NetworkingEngineering"
+display_name = "Networking Engineering"
+meta_category = "Systems"
+keywords = { strict = ["tcp", "udp", "quic", "epoll", "io_uring", "http2"], soft = ["protocol", "socket", "packet", "bandwidth", "websocket"] }
+core_dependencies = ["hyper", "mio", "quinn", "nix", "socket2", "libuv"]
+ecosystem_dependencies = ["netty", "boost.asio", "tokio-tungstenite"]
+file_tokens = ["tcp", "udp", "socket", "quic", "epoll", "io_uring"]
+folders = ["transport", "tcp", "udp"]
+language_hints = ["Rust", "C", "C++", "Go"]
+
+[[capabilities]]
+id = "PerformanceEngineering"
+display_name = "Performance Engineering"
+meta_category = "Systems"
+keywords = { strict = ["simd", "zero-copy", "flamegraph", "valgrind", "perf"], soft = ["profiling", "benchmark", "latency", "throughput", "bottleneck"] }
+core_dependencies = ["criterion", "divan", "flamegraph", "perf-event", "packed_simd"]
+ecosystem_dependencies = ["pprof", "hyperfine", "rayon"]
+file_tokens = ["bench", "flamegraph", "simd", "valgrind", "prof"]
+folders = ["bench", "benches", "benchmarks"]
+language_hints = ["Rust", "C", "C++", "Assembly"]
+
+# ═══════════════════════════════
+# CATEGORY 2 — INFRASTRUCTURE & BACKEND
+# ═══════════════════════════════
+
+[[capabilities]]
+id = "CloudInfrastructure"
+display_name = "Cloud Infrastructure"
+meta_category = "Infrastructure"
+keywords = { strict = ["kubernetes", "terraform", "helm", "k8s operator", "crd"], soft = ["cloud", "container", "docker", "pod", "deployment", "ingress", "aws", "gcp"] }
+core_dependencies = ["kube", "terraform", "pulumi", "kubernetes-client", "helm3"]
+ecosystem_dependencies = ["aws-sdk", "google-cloud", "boto3"]
+file_tokens = ["operator", "crd", "kubelet", "terraform", "helm"]
+folders = ["k8s", "kubernetes", "helm", "terraform", "operators", "infra"]
+language_hints = ["Go", "TypeScript", "Python", "HCL"]
+
+[[capabilities]]
+id = "DevOpsAutomation"
+display_name = "DevOps & Automation"
+meta_category = "Infrastructure"
+keywords = { strict = ["github actions", "gitlab ci", "jenkins", "dockerfile", "ansible"], soft = ["ci", "cd", "pipeline", "workflow", "deploy", "puppet"] }
+core_dependencies = ["ansible", "puppet", "chef"]
+ecosystem_dependencies = ["github-actions", "fabric", "invoke", "cargo-make"]
+file_tokens = ["dockerfile", "jenkinsfile", "playbook", "ansible"]
+folders = [".github", ".circleci", ".gitlab", "ansible", "playbooks"]
+language_hints = ["Shell", "YAML", "Python", "HCL"]
+
+[[capabilities]]
+id = "ServiceScalability"
+display_name = "Service Scalability"
+meta_category = "Infrastructure"
+keywords = { strict = ["service mesh", "istio", "envoy", "circuit breaker", "cqrs", "event sourcing"], soft = ["microservice", "rate limit", "load balance", "resilience", "backpressure"] }
+core_dependencies = ["linkerd", "istio", "envoy", "hystrix", "kong", "haproxy"]
+ecosystem_dependencies = ["resilience4j", "traefik", "nginx", "celery", "sidekiq"]
+file_tokens = ["gateway", "balancer", "breaker", "bulkhead"]
+folders = ["gateway", "mesh", "balancer", "circuitbreaker"]
+language_hints = ["Go", "Java", "Rust"]
+
+[[capabilities]]
+id = "ObservabilityReliability"
+display_name = "Observability & Reliability"
+meta_category = "Infrastructure"
+keywords = { strict = ["prometheus", "grafana", "opentelemetry", "jaeger", "zipkin", "slo", "sli"], soft = ["metrics", "tracing", "logging", "monitoring", "dashboards", "alert"] }
+core_dependencies = ["prometheus", "opentelemetry", "jaeger", "zipkin", "opentelemetry-sdk"]
+ecosystem_dependencies = ["tracing", "grafana", "datadog", "sentry", "honeycomb"]
+file_tokens = ["telemetry", "prometheus", "exporter", "jaeger", "opentelemetry"]
+folders = ["observability", "telemetry", "slo"]
+language_hints = ["Go", "Python", "Rust"]
+
+[[capabilities]]
+id = "WebBackendAPI"
+display_name = "Web Backend & API"
+meta_category = "Infrastructure"
+keywords = { strict = ["graphql", "grpc", "openapi", "swagger", "rest"], soft = ["oauth", "jwt", "api", "endpoint", "router", "middleware", "http"] }
+core_dependencies = ["actix-web", "axum", "warp", "fastapi", "gin", "nestjs"]
+ecosystem_dependencies = ["express", "django", "flask", "rocket", "spring", "fiber", "koa"]
+file_tokens = ["graphql", "openapi", "grpc", "swagger", "rpc"]
+folders = ["rpc", "graphql", "openapi"]
+language_hints = ["TypeScript", "Python", "Go", "Rust", "Java", "Ruby"]
+
+# ═══════════════════════════════
+# CATEGORY 3 — DATA & STORAGE
+# ═══════════════════════════════
+
+[[capabilities]]
+id = "DatabaseInternals"
+display_name = "Database Internals"
+meta_category = "Data"
+keywords = { strict = ["btree", "lsm", "wal", "mvcc", "transaction isolation", "buffer pool", "query planner"], soft = ["index", "page", "compaction", "vacuum", "tuple", "catalog"] }
+core_dependencies = ["sled", "rocksdb", "tikv", "leveldb", "lmdb", "pebble", "foundationdb"]
+ecosystem_dependencies = ["badger", "bbolt"]
+file_tokens = ["btree", "lsm", "wal", "mvcc", "buffer", "compaction", "vacuum"]
+folders = ["storage", "buffer", "wal", "catalog", "engine"]
+language_hints = ["Rust", "C", "C++", "Go"]
+
+[[capabilities]]
+id = "DatabaseUsage"
+display_name = "Database Usage"
+meta_category = "Data"
+keywords = { strict = ["sqlx", "diesel", "prisma", "typeorm"], soft = ["postgres", "mysql", "mongodb", "orm", "migration", "transaction", "schema"] }
+core_dependencies = ["sqlx", "diesel", "sea-orm", "prisma", "typeorm", "ecto"]
+ecosystem_dependencies = ["sequelize", "gorm", "mongoose", "psycopg2", "redis", "pg"]
+file_tokens = ["migration", "schema", "seed", "dao", "entity"]
+folders = ["migrations", "seeds"]
+language_hints = ["TypeScript", "Python", "Rust", "Go", "Ruby", "Java"]
+
+[[capabilities]]
+id = "DataEngineering"
+display_name = "Data Engineering"
+meta_category = "Data"
+keywords = { strict = ["apache spark", "flink", "kafka", "beam", "dbt", "airflow", "lakehouse"], soft = ["etl", "pipeline", "batch", "streaming", "warehouse", "parquet"] }
+core_dependencies = ["apache-spark", "flink", "apache-beam", "confluent-kafka"]
+ecosystem_dependencies = ["dbt", "airflow", "dagster", "polars", "dask", "pandas"]
+file_tokens = ["etl", "pipeline", "spark", "kafka", "dags"]
+folders = ["pipelines", "dags", "etl", "streaming", "batch"]
+language_hints = ["Python", "Scala", "SQL"]
+
+[[capabilities]]
+id = "SearchIndexing"
+display_name = "Search & Indexing"
+meta_category = "Data"
+keywords = { strict = ["tantivy", "lucene", "elasticsearch", "solr", "inverted index", "bm25", "tfidf"], soft = ["search", "index", "vector search", "relevance", "tokenize", "fuzzy"] }
+core_dependencies = ["tantivy", "lucene", "meilisearch", "elasticsearch", "solr", "vespa"]
+ecosystem_dependencies = ["typesense", "hnswlib", "faiss"]
+file_tokens = ["indexer", "searcher", "tokenizer", "ranker", "inverted", "bm25"]
+folders = ["indexer", "searcher", "ranking", "lucene"]
+language_hints = ["Rust", "Java", "Python"]
+
+# ═══════════════════════════════
+# CATEGORY 4 — APPLICATION DOMAINS
+# ═══════════════════════════════
+
+[[capabilities]]
+id = "FrontendEngineering"
+display_name = "Frontend Engineering"
+meta_category = "Application"
+keywords = { strict = ["react", "vue", "svelte", "nextjs", "angular", "webassembly", "jsx", "tsx"], soft = ["css", "html", "spa", "ssr", "dom", "browser", "state management"] }
+core_dependencies = ["react", "vue", "svelte", "angular", "nextjs", "qwik", "solid-js"]
+ecosystem_dependencies = ["vite", "webpack", "tailwindcss", "redux", "zustand"]
+file_tokens = ["jsx", "tsx", "stylesheet", "theme", "widget", "navbar", "drawer"]
+folders = ["components", "views", "layouts", "styles", "themes"]
+language_hints = ["TypeScript", "JavaScript", "CSS", "HTML"]
+
+[[capabilities]]
+id = "MachineLearning"
+display_name = "Machine Learning"
+meta_category = "Research"
+keywords = { strict = ["pytorch", "tensorflow", "neural network", "transformer", "llm", "cuda"], soft = ["model", "training", "inference", "dataset", "epoch", "embedding", "backprop"] }
+core_dependencies = ["torch", "pytorch", "tensorflow", "jax", "transformers", "diffusers"]
+ecosystem_dependencies = ["scikit-learn", "numpy", "scipy", "xgboost"]
+file_tokens = ["trainer", "dataset", "inference", "checkpoint", "tokenizer", "attention", "tensor"]
+folders = ["training", "datasets", "checkpoints", "experiments", "notebooks", "tensors"]
+language_hints = ["Python", "CUDA", "C++"]
+
+[[capabilities]]
+id = "SecurityEngineering"
+display_name = "Security Engineering"
+meta_category = "Application"
+keywords = { strict = ["cryptography", "openssl", "aes", "rsa", "fuzzing", "cve", "pentest"], soft = ["tls", "jwt", "oauth2", "encrypt", "hash", "signature", "audit", "rbac"] }
+core_dependencies = ["ring", "rustls", "openssl", "libsodium", "cryptography", "bouncy-castle"]
+ecosystem_dependencies = ["jsonwebtoken", "passport", "bcrypt", "argon2"]
+file_tokens = ["crypto", "cipher", "cert", "ssl", "tls", "encrypt", "decrypt"]
+folders = ["crypto", "security", "certs", "identity"]
+language_hints = ["Rust", "C", "Python"]
+
+[[capabilities]]
+id = "CompilersLanguageTooling"
+display_name = "Compilers & Language Tooling"
+meta_category = "Research"
+keywords = { strict = ["llvm", "ir", "ast", "parser", "lexer", "codegen", "proc-macro", "type checker"], soft = ["compiler", "language", "syntax", "token", "grammar", "semantic", "rewrite"] }
+core_dependencies = ["llvm", "inkwell", "cranelift", "tree-sitter", "lalrpop", "chumsky", "nom"]
+ecosystem_dependencies = ["syn", "quote", "proc-macro2", "rowan", "tower-lsp"]
+file_tokens = ["lexer", "parser", "ast", "codegen", "typecheck", "macro", "passes"]
+folders = ["parser", "lexer", "ast", "codegen", "compiler", "typechecker", "passes"]
+language_hints = ["Rust", "Haskell", "OCaml", "C++"]
