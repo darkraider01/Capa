@@ -7,76 +7,76 @@ keyword_weight = 0.10000000149011612
 enabled = true
 min_samples = 10
 
-[ranking.calibration.stats.ObservabilityReliability]
-mean = 0.23581832647323608
-std_dev = 0.07999999821186066
-
-[ranking.calibration.stats.WebBackendAPI]
-mean = 0.23226426541805267
-std_dev = 0.07999999821186066
-
 [ranking.calibration.stats.SearchIndexing]
 mean = 0.2104751169681549
-std_dev = 0.07999999821186066
-
-[ranking.calibration.stats.DataEngineering]
-mean = 0.21449880301952362
 std_dev = 0.07999999821186066
 
 [ranking.calibration.stats.CloudInfrastructure]
 mean = 0.22642585635185242
 std_dev = 0.07999999821186066
 
-[ranking.calibration.stats.ServiceScalability]
-mean = 0.21445612609386444
-std_dev = 0.07999999821186066
-
-[ranking.calibration.stats.DistributedAlgorithms]
-mean = 0.23231597244739532
-std_dev = 0.07999999821186066
-
-[ranking.calibration.stats.PerformanceEngineering]
-mean = 0.2416638284921646
+[ranking.calibration.stats.CompilersLanguageTooling]
+mean = 0.2863616347312927
 std_dev = 0.07999999821186066
 
 [ranking.calibration.stats.RuntimeSystems]
 mean = 0.22026191651821136
 std_dev = 0.07999999821186066
 
-[ranking.calibration.stats.DevOpsAutomation]
-mean = 0.24441653490066528
-std_dev = 0.07999999821186066
-
 [ranking.calibration.stats.DatabaseUsage]
 mean = 0.2271832674741745
 std_dev = 0.07999999821186066
 
-[ranking.calibration.stats.CompilersLanguageTooling]
-mean = 0.2863616347312927
+[ranking.calibration.stats.ServiceScalability]
+mean = 0.21445612609386444
 std_dev = 0.07999999821186066
 
-[ranking.calibration.stats.SecurityEngineering]
-mean = 0.22986698150634766
+[ranking.calibration.stats.DataEngineering]
+mean = 0.21449880301952362
 std_dev = 0.07999999821186066
 
-[ranking.calibration.stats.FrontendEngineering]
-mean = 0.23226892948150635
+[ranking.calibration.stats.DistributedAlgorithms]
+mean = 0.23231597244739532
 std_dev = 0.07999999821186066
 
-[ranking.calibration.stats.NetworkingEngineering]
-mean = 0.23375017940998077
+[ranking.calibration.stats.DatabaseInternals]
+mean = 0.21432533860206604
+std_dev = 0.07999999821186066
+
+[ranking.calibration.stats.WebBackendAPI]
+mean = 0.23226426541805267
 std_dev = 0.07999999821186066
 
 [ranking.calibration.stats.ConcurrentProgramming]
 mean = 0.24169336259365082
 std_dev = 0.07999999821186066
 
+[ranking.calibration.stats.PerformanceEngineering]
+mean = 0.2416638284921646
+std_dev = 0.07999999821186066
+
+[ranking.calibration.stats.SecurityEngineering]
+mean = 0.22986698150634766
+std_dev = 0.07999999821186066
+
 [ranking.calibration.stats.MachineLearning]
 mean = 0.23603112995624542
 std_dev = 0.07999999821186066
 
-[ranking.calibration.stats.DatabaseInternals]
-mean = 0.21432533860206604
+[ranking.calibration.stats.FrontendEngineering]
+mean = 0.23226892948150635
+std_dev = 0.07999999821186066
+
+[ranking.calibration.stats.ObservabilityReliability]
+mean = 0.23581832647323608
+std_dev = 0.07999999821186066
+
+[ranking.calibration.stats.DevOpsAutomation]
+mean = 0.24441653490066528
+std_dev = 0.07999999821186066
+
+[ranking.calibration.stats.NetworkingEngineering]
+mean = 0.23375017940998077
 std_dev = 0.07999999821186066
 
 [ranking.calibrated]
@@ -107,10 +107,10 @@ retry_attempts = 3
 max_users = 50
 
 [ingestion.categories]
-ml_ai = true
-systems = true
-algorithms = true
 noise = true
-devops = true
+algorithms = true
 frontend = true
+devops = true
 database = true
+systems = true
+ml_ai = true

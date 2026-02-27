@@ -407,8 +407,8 @@ def run_evaluate_fit(username: str, job_description: str):
 STRICT RULES:
 1. Base ALL scoring only on the provided capability scores and evidence — never invent skills.
 2. match_score must be 0–100. Be realistic, not generous.
-3. strengths: list only capability domains where the developer scores > 0.5 confidence AND are relevant to the job.
-4. missing: list specific capabilities the job requires that the developer's profile lacks or scores below 0.4.
+3. strengths: list only capability domains where the developer scores > 0.2 confidence AND are relevant to the job.
+4. missing: list specific capabilities the job requires that the developer's profile lacks or scores below 0.1.
 5. recommendation: one concise paragraph on whether to hire, why, and what team context they fit.
 
 Capability domain definitions for reference:
@@ -536,7 +536,7 @@ Return realistic requirements — don't over-specify.
 RULES:
 1. Only use domain IDs that exist exactly in the provided registry.
 2. required_roles: list 3–6 capability domain IDs the project genuinely needs.
-3. min_confidence: 0.4–0.7 depending on how critical each role is (use a single threshold for simplicity)."""
+3. min_confidence: 0.1–0.3 depending on how critical each role is (use a single threshold for simplicity)."""
 
     requirements_response = query_gemini(translate_prompt, translate_system, schema=TeamRequirements)
     if not requirements_response:
@@ -548,7 +548,7 @@ RULES:
         print("Failed to parse requirements."); return
 
     roles = requirements.get("required_roles", [])
-    min_conf = requirements.get("min_confidence", 0.5)
+    min_conf = requirements.get("min_confidence", 0.2)
 
     print(f"\n  Identified {len(roles)} required role domains:")
     for r in roles:
@@ -617,7 +617,7 @@ def run_generate_interview(username: str):
 STRICT RULES:
 1. Derive ALL questions directly from the developer's demonstrated capability signals and evidence repos.
 2. Do NOT ask about technologies absent from the profile.
-3. Generate 2 questions per strong capability domain (confidence > 0.5). 
+3. Generate 2 questions per strong capability domain (confidence > 0.2). 
 4. Questions must be specific, technical, and require genuine expertise to answer well.
 5. Format: group questions by capability domain with the domain name as a header.
 

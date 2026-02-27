@@ -94,9 +94,6 @@ document.addEventListener('DOMContentLoaded', () => {
             groupJob.style.display = config.showInputs.includes('job') ? 'flex' : 'none';
             groupProject.style.display = config.showInputs.includes('project') ? 'flex' : 'none';
             groupQuery.style.display = config.showInputs.includes('query') ? 'flex' : 'none';
-
-            // Clear Terminal
-            terminalOutput.innerHTML = `<span class="cmd-prompt">~/search_engine $</span> Ready. Select a tool and click Run Pipeline to begin.`;
         });
     });
 
@@ -130,11 +127,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 terminalOutput.textContent = `[ERROR]\n\n${data.error}`;
             }
 
-            // Fetch and render capabilities if username was provided
+            // Fetch and render capabilities if username was provided and view is Intelligence Profile
             const capContainer = document.getElementById('capabilities-container');
             const capTags = document.getElementById('capabilities-tags');
             
-            if (config.showInputs.includes('username') && inputUsername.value) {
+            if (currentView === 'profile' && inputUsername.value) {
                 try {
                     const capRes = await fetch('/api/capabilities', {
                         method: 'POST',
