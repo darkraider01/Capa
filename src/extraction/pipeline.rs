@@ -82,7 +82,7 @@ pub async fn extract_user_capabilities_full(
 
         // ── 2-5. Tree-based channels (dep, filename, structure, language) ──
         // Fetch tree with depth ≤ 2 (max 1 API call per repo)
-        let (dep_scores, filename_scores, structure_scores) = match github_client
+        let (dep_scores, dep_evidence, filename_scores, structure_scores) = match github_client
             .fetch_repo_tree(username, &repo.name)
             .await
         {
@@ -102,6 +102,7 @@ pub async fn extract_user_capabilities_full(
                     .collect();
 
                 let mut dep_cap_scores: HashMap<String, f32> = HashMap::new();
+                let mut dep_cap_evidence: HashMap<String, Vec<String>> = HashMap::new();
                 for manifest_path in &manifest_paths {
                     if let Ok(Some(content)) = github_client
                         .fetch_file_content(username, &repo.name, manifest_path)
@@ -123,6 +124,12 @@ pub async fn extract_user_capabilities_full(
                             let entry = dep_cap_scores.entry(cap_id).or_insert(0.0);
                             *entry = entry.max(score);
                         }
+                        for (cap_id, dep_list) in signals.1 {
+                            dep_cap_evidence
+                                .entry(cap_id)
+                                .or_default()
+                                .extend(dep_list);
+                        }
                     }
                 }
 
@@ -133,11 +140,11 @@ pub async fn extract_user_capabilities_full(
                 let structure_signals =
                     project_structure::detect_structure(&tree, registry, &dep_cap_scores);
 
-                (dep_cap_scores, filename_signals.0, structure_signals.0)
+                (dep_cap_scores, dep_cap_evidence, filename_signals.0, structure_signals.0)
             }
             Err(e) => {
                 eprintln!("  ⚠ Tree fetch failed for {}: {}", repo.name, e);
-                (HashMap::new(), HashMap::new(), HashMap::new())
+                (HashMap::new(), HashMap::new(), HashMap::new(), HashMap::new())
             }
         };
 
@@ -189,6 +196,7 @@ pub async fn extract_user_capabilities_full(
             stars: repo.stars,
             keyword_signals,
             dep_scores,
+            dep_evidence,
             filename_scores,
             structure_scores,
             language_scores,

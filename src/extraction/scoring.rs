@@ -12,6 +12,8 @@ pub struct RepoSignals {
     pub keyword_signals: Vec<Signal>,
     /// dependency score per capability_id (already IDF-weighted)
     pub dep_scores: HashMap<String, f32>,
+    /// dependency evidence (matched dep names) per capability_id
+    pub dep_evidence: HashMap<String, Vec<String>>,
     /// filename score per capability_id
     pub filename_scores: HashMap<String, f32>,
     /// structure score per capability_id (composite-gated)
@@ -48,7 +50,7 @@ pub fn aggregate_all_signals(
     let mut cap_negative_penalty: HashMap<String, f32> = HashMap::new();
     let mut cap_keywords_evidence: HashMap<String, Vec<String>> = HashMap::new();
     let mut cap_repos_evidence: HashMap<String, Vec<String>> = HashMap::new();
-    let cap_deps_evidence: HashMap<String, Vec<String>> = HashMap::new();
+    let mut cap_deps_evidence: HashMap<String, Vec<String>> = HashMap::new();
 
     let repo_count = repos.len() as f32;
 
@@ -85,6 +87,12 @@ pub fn aggregate_all_signals(
             let capped = (score * decay).min(weights.max_repo_contribution);
             *cap_dep.entry(id.clone()).or_insert(0.0) += capped / repo_count;
             *cap_negative_penalty.entry(id.clone()).or_insert(0.0) += penalty / repo_count;
+            if let Some(deps) = repo.dep_evidence.get(id) {
+                cap_deps_evidence
+                    .entry(id.clone())
+                    .or_default()
+                    .extend(deps.iter().cloned());
+            }
         }
 
         // 3. Filename channel
@@ -216,7 +224,16 @@ pub fn aggregate_all_signals(
             );
 
             // Attach dep evidence
-            cap.evidence_deps = cap_deps_evidence.get(cap_id).cloned().unwrap_or_default();
+            let evidence_deps = {
+                let mut deps: Vec<String> = cap_deps_evidence
+                    .get(cap_id)
+                    .cloned()
+                    .unwrap_or_default();
+                deps.sort();
+                deps.dedup();
+                deps
+            };
+            cap.evidence_deps = evidence_deps;
 
             capabilities.push(cap);
         }
@@ -402,5 +419,54 @@ fn apply_correlation_boosts(capabilities: &mut Vec<ExtractedCapability>, boost_f
         cap.signal_breakdown.correlation_boost = total_boost;
         cap.confidence = safe_f32(cap.confidence + total_boost);
         cap.tier = CapabilityTier::from_confidence(cap.confidence);
+    }
+}
+
+#[cfg(test)]
+pub mod tests {
+    use super::*;
+
+    #[test]
+    pub fn test_aggregate_all_signals_populates_evidence_deps() {
+        let mut repo = RepoSignals {
+            name: "test-repo".to_string(),
+            language: Some("Rust".to_string()),
+            stars: 10,
+            keyword_signals: Vec::new(),
+            dep_scores: HashMap::new(),
+            dep_evidence: HashMap::new(),
+            filename_scores: HashMap::new(),
+            structure_scores: HashMap::new(),
+            language_scores: HashMap::new(),
+            activity_scores: HashMap::new(),
+            negative_signal_penalty: 0.0,
+            age_decay: 1.0,
+            commit_count: 5,
+        };
+
+        repo.dep_scores.insert("MachineLearning".to_string(), 0.8);
+        repo.dep_evidence.insert(
+            "MachineLearning".to_string(),
+            vec!["torch".to_string(), "numpy".to_string()],
+        );
+
+        let weights = ScoringWeights::default();
+        let cap_ids = vec!["MachineLearning"];
+
+        let caps = aggregate_all_signals(
+            "test_user".to_string(),
+            vec![repo],
+            10,
+            &weights,
+            &cap_ids,
+            0.0,
+        );
+
+        let ml_cap = caps
+            .iter()
+            .find(|c| c.capability_type.as_str() == "MachineLearning")
+            .expect("MachineLearning capability should be extracted");
+
+        assert_eq!(ml_cap.evidence_deps, vec!["numpy".to_string(), "torch".to_string()]);
     }
 }
