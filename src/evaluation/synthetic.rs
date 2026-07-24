@@ -13,6 +13,7 @@ fn empty_repo_signals(name: &str) -> RepoSignals {
         stars: 0,
         keyword_signals: Vec::new(),
         dep_scores: HashMap::new(),
+        dep_evidence: HashMap::new(),
         filename_scores: HashMap::new(),
         structure_scores: HashMap::new(),
         language_scores: HashMap::new(),

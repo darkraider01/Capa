@@ -12,7 +12,10 @@ pub struct DependencySignal {
 
 /// Per-capability aggregate score from dependency signals in one repo
 #[derive(Debug, Default)]
-pub struct DepCapabilityScores(pub HashMap<String, f32>);
+pub struct DepCapabilityScores(
+    pub HashMap<String, f32>,
+    pub HashMap<String, Vec<String>>,
+);
 
 /// Parse raw package names from a manifest file.
 /// Returns lowercase, version-stripped package names.
@@ -44,6 +47,7 @@ pub fn dep_signals(
     total_repos: u64,
 ) -> DepCapabilityScores {
     let mut scores: HashMap<String, f32> = HashMap::new();
+    let mut evidence: HashMap<String, Vec<String>> = HashMap::new();
 
     for dep in deps {
         let dep_lower = dep.to_lowercase();
@@ -70,10 +74,15 @@ pub fn dep_signals(
 
             let entry = scores.entry(cap_id.clone()).or_insert(0.0);
             *entry = entry.max(signal_score);
+
+            evidence
+                .entry(cap_id.clone())
+                .or_default()
+                .push(dep_lower.clone());
         }
     }
 
-    DepCapabilityScores(scores)
+    DepCapabilityScores(scores, evidence)
 }
 
 // ─── Parsers ──────────────────────────────────────────────────────────────────
