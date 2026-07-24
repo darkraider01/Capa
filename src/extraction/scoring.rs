@@ -87,6 +87,10 @@ pub fn aggregate_all_signals(
             let capped = (score * decay).min(weights.max_repo_contribution);
             *cap_dep.entry(id.clone()).or_insert(0.0) += capped / repo_count;
             *cap_negative_penalty.entry(id.clone()).or_insert(0.0) += penalty / repo_count;
+            cap_repos_evidence
+                .entry(id.clone())
+                .or_default()
+                .push(repo.name.clone());
             if let Some(deps) = repo.dep_evidence.get(id) {
                 cap_deps_evidence
                     .entry(id.clone())
@@ -100,6 +104,10 @@ pub fn aggregate_all_signals(
             let capped = (score * decay).min(weights.max_repo_contribution);
             *cap_filename.entry(id.clone()).or_insert(0.0) += capped / repo_count;
             *cap_negative_penalty.entry(id.clone()).or_insert(0.0) += penalty / repo_count;
+            cap_repos_evidence
+                .entry(id.clone())
+                .or_default()
+                .push(repo.name.clone());
         }
 
         // 4. Structure channel (composite-gated, already pre-gated in project_structure)
@@ -107,6 +115,10 @@ pub fn aggregate_all_signals(
             let capped = (score * decay).min(weights.max_repo_contribution);
             *cap_structure.entry(id.clone()).or_insert(0.0) += capped / repo_count;
             *cap_negative_penalty.entry(id.clone()).or_insert(0.0) += penalty / repo_count;
+            cap_repos_evidence
+                .entry(id.clone())
+                .or_default()
+                .push(repo.name.clone());
         }
 
         // 5. Language channel (amplify-only — applied AFTER raw_score is computed below)
@@ -468,5 +480,45 @@ pub mod tests {
             .expect("MachineLearning capability should be extracted");
 
         assert_eq!(ml_cap.evidence_deps, vec!["numpy".to_string(), "torch".to_string()]);
+    }
+
+    #[test]
+    pub fn test_aggregate_all_signals_populates_evidence_repos_non_keyword() {
+        let mut repo = RepoSignals {
+            name: "repo-with-deps-only".to_string(),
+            language: Some("Rust".to_string()),
+            stars: 5,
+            keyword_signals: Vec::new(),
+            dep_scores: HashMap::new(),
+            dep_evidence: HashMap::new(),
+            filename_scores: HashMap::new(),
+            structure_scores: HashMap::new(),
+            language_scores: HashMap::new(),
+            activity_scores: HashMap::new(),
+            negative_signal_penalty: 0.0,
+            age_decay: 1.0,
+            commit_count: 5,
+        };
+
+        repo.dep_scores.insert("DistributedAlgorithms".to_string(), 0.7);
+
+        let weights = ScoringWeights::default();
+        let cap_ids = vec!["DistributedAlgorithms"];
+
+        let caps = aggregate_all_signals(
+            "test_user".to_string(),
+            vec![repo],
+            10,
+            &weights,
+            &cap_ids,
+            0.0,
+        );
+
+        let cap = caps
+            .iter()
+            .find(|c| c.capability_type.as_str() == "DistributedAlgorithms")
+            .expect("DistributedAlgorithms capability should be extracted");
+
+        assert_eq!(cap.evidence_repos, vec!["repo-with-deps-only".to_string()]);
     }
 }
