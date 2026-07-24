@@ -114,17 +114,18 @@ pub async fn extract_user_capabilities_full(
                         // Store deps in the DB for IDF tracking
                         let _ = store_repo_deps(pool, repo.id, &deps).await;
 
-                        let signals = dependency_parser::dep_signals(
-                            &deps,
-                            registry,
-                            &dep_frequencies,
-                            total_repos_in_db,
-                        );
-                        for (cap_id, score) in signals.0 {
+                        let dependency_parser::DepCapabilityScores(scores, evidence) =
+                            dependency_parser::dep_signals(
+                                &deps,
+                                registry,
+                                &dep_frequencies,
+                                total_repos_in_db,
+                            );
+                        for (cap_id, score) in scores {
                             let entry = dep_cap_scores.entry(cap_id).or_insert(0.0);
                             *entry = entry.max(score);
                         }
-                        for (cap_id, dep_list) in signals.1 {
+                        for (cap_id, dep_list) in evidence {
                             dep_cap_evidence
                                 .entry(cap_id)
                                 .or_default()
