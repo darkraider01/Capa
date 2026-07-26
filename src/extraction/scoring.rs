@@ -75,7 +75,6 @@ pub fn aggregate_all_signals(
         for (id, score) in &kw_by_cap {
             let capped = (score * decay).min(weights.max_repo_contribution);
             *cap_keyword.entry(id.clone()).or_insert(0.0) += capped / repo_count;
-            *cap_negative_penalty.entry(id.clone()).or_insert(0.0) += penalty / repo_count;
             cap_repos_evidence
                 .entry(id.clone())
                 .or_default()
@@ -86,7 +85,6 @@ pub fn aggregate_all_signals(
         for (id, score) in &repo.dep_scores {
             let capped = (score * decay).min(weights.max_repo_contribution);
             *cap_dep.entry(id.clone()).or_insert(0.0) += capped / repo_count;
-            *cap_negative_penalty.entry(id.clone()).or_insert(0.0) += penalty / repo_count;
             cap_repos_evidence
                 .entry(id.clone())
                 .or_default()
@@ -103,7 +101,6 @@ pub fn aggregate_all_signals(
         for (id, score) in &repo.filename_scores {
             let capped = (score * decay).min(weights.max_repo_contribution);
             *cap_filename.entry(id.clone()).or_insert(0.0) += capped / repo_count;
-            *cap_negative_penalty.entry(id.clone()).or_insert(0.0) += penalty / repo_count;
             cap_repos_evidence
                 .entry(id.clone())
                 .or_default()
@@ -114,7 +111,6 @@ pub fn aggregate_all_signals(
         for (id, score) in &repo.structure_scores {
             let capped = (score * decay).min(weights.max_repo_contribution);
             *cap_structure.entry(id.clone()).or_insert(0.0) += capped / repo_count;
-            *cap_negative_penalty.entry(id.clone()).or_insert(0.0) += penalty / repo_count;
             cap_repos_evidence
                 .entry(id.clone())
                 .or_default()
@@ -129,6 +125,26 @@ pub fn aggregate_all_signals(
         // 6. Activity channel
         for (id, score) in &repo.activity_scores {
             *cap_activity.entry(id.clone()).or_insert(0.0) += score / repo_count;
+        }
+
+        // Deduplicated negative penalty application (once per repo per capability across the 4 penalized channels)
+        if penalty > 0.0 {
+            let mut repo_penalized_caps: HashSet<&str> = HashSet::new();
+            for id in kw_by_cap.keys() {
+                repo_penalized_caps.insert(id.as_str());
+            }
+            for id in repo.dep_scores.keys() {
+                repo_penalized_caps.insert(id.as_str());
+            }
+            for id in repo.filename_scores.keys() {
+                repo_penalized_caps.insert(id.as_str());
+            }
+            for id in repo.structure_scores.keys() {
+                repo_penalized_caps.insert(id.as_str());
+            }
+            for id in repo_penalized_caps {
+                *cap_negative_penalty.entry(id.to_string()).or_insert(0.0) += penalty / repo_count;
+            }
         }
     }
 
@@ -630,5 +646,155 @@ pub mod tests {
             "Single capability should have zero correlation boost"
         );
     }
+
+    #[test]
+    pub fn test_aggregate_all_signals_negative_penalty_deduped_per_repo() {
+        let mut repo = RepoSignals {
+            name: "penalized-repo".to_string(),
+            language: Some("Rust".to_string()),
+            stars: 5,
+            keyword_signals: Vec::new(),
+            dep_scores: HashMap::new(),
+            dep_evidence: HashMap::new(),
+            filename_scores: HashMap::new(),
+            structure_scores: HashMap::new(),
+            language_scores: HashMap::new(),
+            activity_scores: HashMap::new(),
+            negative_signal_penalty: 0.25,
+            age_decay: 1.0,
+            commit_count: 5,
+        };
+
+        // Populate evidence across 3 channels for the same capability
+        repo.dep_scores.insert("MachineLearning".to_string(), 0.5);
+        repo.filename_scores.insert("MachineLearning".to_string(), 0.5);
+        repo.structure_scores.insert("MachineLearning".to_string(), 0.5);
+
+        let weights = ScoringWeights::default();
+        let cap_ids = vec!["MachineLearning"];
+
+        let caps = aggregate_all_signals(
+            "test_user".to_string(),
+            vec![repo.clone()],
+            10,
+            &weights,
+            &cap_ids,
+            0.0,
+        );
+
+        // Control case: identical repo without negative penalty
+        let mut unpenalized_repo = repo.clone();
+        unpenalized_repo.negative_signal_penalty = 0.0;
+        let control_caps = aggregate_all_signals(
+            "test_user".to_string(),
+            vec![unpenalized_repo],
+            10,
+            &weights,
+            &cap_ids,
+            0.0,
+        );
+
+        let cap = caps.first().expect("Capability should be extracted");
+        let control_cap = control_caps.first().expect("Control capability should be extracted");
+
+        // raw_score difference should reflect a single 0.25 penalty subtraction (before channel weighting subtraction)
+        // In aggregate_all_signals: base_raw = channel_sum; raw_score = (base_raw - negative_penalty).max(0.0)
+        // With repo_count = 1, negative_penalty is exactly 0.25 (not 3 * 0.25 = 0.75)
+        let expected_raw_diff = 0.25;
+        let actual_raw_diff = control_cap.signal_breakdown.raw_score - cap.signal_breakdown.raw_score;
+        assert!(
+            (actual_raw_diff - expected_raw_diff).abs() < 1e-4,
+            "Negative penalty was applied {} times instead of 1 time",
+            actual_raw_diff / 0.25
+        );
+    }
+
+    #[test]
+    pub fn test_aggregate_all_signals_negative_penalty_sums_across_repos() {
+        let repo1 = RepoSignals {
+            name: "penalized-repo-1".to_string(),
+            language: Some("Rust".to_string()),
+            stars: 5,
+            keyword_signals: Vec::new(),
+            dep_scores: HashMap::from([("MachineLearning".to_string(), 0.8)]),
+            dep_evidence: HashMap::new(),
+            filename_scores: HashMap::new(),
+            structure_scores: HashMap::new(),
+            language_scores: HashMap::new(),
+            activity_scores: HashMap::new(),
+            negative_signal_penalty: 0.25,
+            age_decay: 1.0,
+            commit_count: 5,
+        };
+
+        let repo2 = RepoSignals {
+            name: "penalized-repo-2".to_string(),
+            language: Some("Rust".to_string()),
+            stars: 5,
+            keyword_signals: Vec::new(),
+            dep_scores: HashMap::from([("MachineLearning".to_string(), 0.8)]),
+            dep_evidence: HashMap::new(),
+            filename_scores: HashMap::new(),
+            structure_scores: HashMap::new(),
+            language_scores: HashMap::new(),
+            activity_scores: HashMap::new(),
+            negative_signal_penalty: 0.25,
+            age_decay: 1.0,
+            commit_count: 5,
+        };
+
+        let weights = ScoringWeights::default();
+        let cap_ids = vec!["MachineLearning"];
+
+        let caps = aggregate_all_signals(
+            "test_user".to_string(),
+            vec![repo1, repo2],
+            10,
+            &weights,
+            &cap_ids,
+            0.0,
+        );
+
+        let cap = caps.first().expect("Capability should be extracted");
+
+        // Control case: both repos without negative penalty
+        let mut repo1_clean = RepoSignals {
+            name: "penalized-repo-1".to_string(),
+            language: Some("Rust".to_string()),
+            stars: 5,
+            keyword_signals: Vec::new(),
+            dep_scores: HashMap::from([("MachineLearning".to_string(), 0.8)]),
+            dep_evidence: HashMap::new(),
+            filename_scores: HashMap::new(),
+            structure_scores: HashMap::new(),
+            language_scores: HashMap::new(),
+            activity_scores: HashMap::new(),
+            negative_signal_penalty: 0.0,
+            age_decay: 1.0,
+            commit_count: 5,
+        };
+        let mut repo2_clean = repo1_clean.clone();
+        repo2_clean.name = "penalized-repo-2".to_string();
+
+        let control_caps = aggregate_all_signals(
+            "test_user".to_string(),
+            vec![repo1_clean, repo2_clean],
+            10,
+            &weights,
+            &cap_ids,
+            0.0,
+        );
+
+        let control_cap = control_caps.first().expect("Control capability should be extracted");
+
+        // With repo_count = 2, each repo contributes 0.25 / 2 = 0.125 penalty. Total penalty = 0.25.
+        let actual_raw_diff = control_cap.signal_breakdown.raw_score - cap.signal_breakdown.raw_score;
+        assert!(
+            (actual_raw_diff - 0.25).abs() < 1e-4,
+            "Penalties across multiple repos did not sum correctly. Diff was {}",
+            actual_raw_diff
+        );
+    }
 }
+
 
