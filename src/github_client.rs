@@ -18,14 +18,42 @@ impl GithubClient {
     }
 
     async fn get<T: serde::de::DeserializeOwned>(&self, url: &str) -> Result<T> {
-        let res = self
-            .client
-            .get(url)
-            .header("Authorization", format!("Bearer {}", self.token))
-            .header("User-Agent", "capability-search")
-            .header("Accept", "application/vnd.github.v3+json")
-            .send()
-            .await?;
+        let send_req = || async {
+            self.client
+                .get(url)
+                .header("Authorization", format!("Bearer {}", self.token))
+                .header("User-Agent", "capability-search")
+                .header("Accept", "application/vnd.github.v3+json")
+                .send()
+                .await
+        };
+
+        let mut res = send_req().await;
+
+        let should_retry = match &res {
+            Err(_) => true,
+            Ok(r) => {
+                let status = r.status();
+                status.is_server_error() || status.as_u16() == 429
+            }
+        };
+
+        if should_retry {
+            let backoff_secs = if let Ok(ref r) = res {
+                r.headers()
+                    .get("Retry-After")
+                    .and_then(|h| h.to_str().ok())
+                    .and_then(|s| s.parse::<u64>().ok())
+                    .unwrap_or(1)
+                    .min(5)
+            } else {
+                1
+            };
+            tokio::time::sleep(std::time::Duration::from_secs(backoff_secs)).await;
+            res = send_req().await;
+        }
+
+        let res = res?;
 
         let status = res.status();
         if !status.is_success() {

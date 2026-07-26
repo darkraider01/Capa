@@ -39,8 +39,8 @@ pub async fn extract_user_capabilities_full(
     // Fetch dep IDF frequencies from the database (across all stored repos)
     let dep_frequencies = fetch_dep_frequencies(pool).await.unwrap_or_default();
     let total_repos_in_db = fetch_total_repo_count(pool).await.unwrap_or(1).max(1);
-
     let mut all_repo_signals: Vec<RepoSignals> = Vec::new();
+    let mut fetch_error_count: usize = 0;
 
     for repo in &repos {
         let repo_age_years = repo_age_years(repo.pushed_at.as_deref());
@@ -79,32 +79,42 @@ pub async fn extract_user_capabilities_full(
                 let mut dep_cap_scores: HashMap<String, f32> = HashMap::new();
                 let mut dep_cap_evidence: HashMap<String, Vec<String>> = HashMap::new();
                 for manifest_path in &manifest_paths {
-                    if let Ok(Some(content)) = github_client
+                    match github_client
                         .fetch_file_content(username, &repo.name, manifest_path)
                         .await
                     {
-                        let deps =
-                            dependency_parser::parse_dependencies(manifest_path, &content);
+                        Ok(Some(content)) => {
+                            let deps =
+                                dependency_parser::parse_dependencies(manifest_path, &content);
 
-                        // Store deps in the DB for IDF tracking
-                        let _ = store_repo_deps(pool, repo.id, &deps).await;
+                            // Store deps in the DB for IDF tracking
+                            let _ = store_repo_deps(pool, repo.id, &deps).await;
 
-                        let dependency_parser::DepCapabilityScores(scores, evidence) =
-                            dependency_parser::dep_signals(
-                                &deps,
-                                registry,
-                                &dep_frequencies,
-                                total_repos_in_db,
-                            );
-                        for (cap_id, score) in scores {
-                            let entry = dep_cap_scores.entry(cap_id).or_insert(0.0);
-                            *entry = entry.max(score);
+                            let dependency_parser::DepCapabilityScores(scores, evidence) =
+                                dependency_parser::dep_signals(
+                                    &deps,
+                                    registry,
+                                    &dep_frequencies,
+                                    total_repos_in_db,
+                                );
+                            for (cap_id, score) in scores {
+                                let entry = dep_cap_scores.entry(cap_id).or_insert(0.0);
+                                *entry = entry.max(score);
+                            }
+                            for (cap_id, dep_list) in evidence {
+                                dep_cap_evidence
+                                    .entry(cap_id)
+                                    .or_default()
+                                    .extend(dep_list);
+                            }
                         }
-                        for (cap_id, dep_list) in evidence {
-                            dep_cap_evidence
-                                .entry(cap_id)
-                                .or_default()
-                                .extend(dep_list);
+                        Ok(None) => {} // File not found (404) or skipped due to size
+                        Err(e) => {
+                            eprintln!(
+                                "  ⚠ Manifest fetch failed for {}/{} ({}): {}",
+                                username, repo.name, manifest_path, e
+                            );
+                            fetch_error_count += 1;
                         }
                     }
                 }
@@ -120,6 +130,7 @@ pub async fn extract_user_capabilities_full(
             }
             Err(e) => {
                 eprintln!("  ⚠ Tree fetch failed for {}: {}", repo.name, e);
+                fetch_error_count += 1;
                 (HashMap::new(), HashMap::new(), HashMap::new(), HashMap::new())
             }
         };
@@ -130,7 +141,11 @@ pub async fn extract_user_capabilities_full(
             .await
         {
             Ok(lang_bytes) => language_signal::language_signals(&lang_bytes, registry).0,
-            Err(_) => HashMap::new(),
+            Err(e) => {
+                eprintln!("  ⚠ Languages fetch failed for {}: {}", repo.name, e);
+                fetch_error_count += 1;
+                HashMap::new()
+            }
         };
 
         // ── 6. Activity channel ────────────────────────────────────────────
@@ -193,6 +208,14 @@ pub async fn extract_user_capabilities_full(
         &cap_ids,
         signal_config.min_confidence,
     );
+
+    if fetch_error_count > 0 {
+        eprintln!(
+            "  ⚠️  Completed with {} API fetch error(s) across {} repositories — output capabilities may be incomplete",
+            fetch_error_count,
+            repos.len()
+        );
+    }
 
     println!("  ✓ {} capabilities extracted (multi-signal)", capabilities.len());
     Ok(capabilities)
