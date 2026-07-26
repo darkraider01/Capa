@@ -172,36 +172,76 @@ fn parse_requirements_txt(content: &str) -> Vec<String> {
         .collect()
 }
 
+#[derive(PartialEq)]
+enum PyprojectParseMode {
+    None,
+    Array,
+    Table,
+}
+
 fn parse_pyproject_toml(content: &str) -> Vec<String> {
     let mut deps = Vec::new();
-    let mut in_deps = false;
+    let mut mode = PyprojectParseMode::None;
 
     for line in content.lines() {
         let trimmed = line.trim();
 
-        if trimmed == "[project.dependencies]"
-            || trimmed == "dependencies = ["
-            || trimmed.starts_with("dependencies = [")
-        {
-            in_deps = true;
+        if trimmed.is_empty() || trimmed.starts_with('#') {
             continue;
         }
 
-        if in_deps {
-            if trimmed == "]" {
-                in_deps = false;
+        // Section header check
+        if trimmed.starts_with('[') {
+            if trimmed == "[project.dependencies]" {
+                mode = PyprojectParseMode::Array;
+                continue;
+            } else if trimmed.starts_with("[tool.poetry.")
+                && (trimmed.ends_with("dependencies]") || trimmed.ends_with("dev-dependencies]"))
+            {
+                mode = PyprojectParseMode::Table;
+                continue;
+            } else {
+                mode = PyprojectParseMode::None;
                 continue;
             }
-            // Lines like: "requests>=2.0", '"pandas"'
-            let name = trimmed
-                .trim_matches(|c: char| c == '"' || c == '\'' || c == ',')
-                .split(|c: char| c == '=' || c == '>' || c == '<' || c == '[' || c == ';')
-                .next()
-                .unwrap_or("")
-                .trim();
-            if !name.is_empty() && !name.starts_with('#') {
-                deps.push(name.to_lowercase());
+        }
+
+        // Inline array check e.g. "dependencies = ["
+        if mode == PyprojectParseMode::None
+            && (trimmed == "dependencies = [" || trimmed.starts_with("dependencies = ["))
+        {
+            mode = PyprojectParseMode::Array;
+            continue;
+        }
+
+        match mode {
+            PyprojectParseMode::Array => {
+                if trimmed == "]" || trimmed.starts_with(']') {
+                    mode = PyprojectParseMode::None;
+                    continue;
+                }
+                // Lines like: "requests>=2.0", '"pandas"'
+                let name = trimmed
+                    .trim_matches(|c: char| c == '"' || c == '\'' || c == ',')
+                    .split(|c: char| c == '=' || c == '>' || c == '<' || c == '[' || c == ';')
+                    .next()
+                    .unwrap_or("")
+                    .trim();
+                if !name.is_empty() && !name.starts_with('#') {
+                    deps.push(name.to_lowercase());
+                }
             }
+            PyprojectParseMode::Table => {
+                if let Some(eq_pos) = trimmed.find('=') {
+                    let key = trimmed[..eq_pos]
+                        .trim()
+                        .trim_matches(|c: char| c == '"' || c == '\'');
+                    if !key.is_empty() && !key.starts_with('#') && key != "python" {
+                        deps.push(key.to_lowercase());
+                    }
+                }
+            }
+            PyprojectParseMode::None => {}
         }
     }
 
@@ -431,4 +471,46 @@ criterion = "0.5"
             );
         }
     }
+
+    #[test]
+    fn test_pyproject_toml_parsing() {
+        let poetry_content = r#"
+[tool.poetry]
+name = "my-poetry-app"
+
+[tool.poetry.dependencies]
+python = "^3.9"
+requests = "^2.28.1"
+torch = { version = "^2.0.0" }
+
+[tool.poetry.dev-dependencies]
+pytest = "^7.0"
+
+[tool.poetry.group.formatting.dependencies]
+black = "^22.0"
+
+[build-system]
+requires = ["poetry-core"]
+"#;
+        let deps = parse_dependencies("pyproject.toml", poetry_content);
+        assert!(deps.contains(&"requests".to_string()));
+        assert!(deps.contains(&"torch".to_string()));
+        assert!(deps.contains(&"pytest".to_string()));
+        assert!(deps.contains(&"black".to_string()));
+        assert!(!deps.contains(&"python".to_string()));
+        assert!(!deps.contains(&"poetry-core".to_string()));
+
+        let pep621_content = r#"
+[project]
+name = "my-pep621-app"
+dependencies = [
+    "flask>=2.0",
+    "pandas",
+]
+"#;
+        let pep_deps = parse_dependencies("pyproject.toml", pep621_content);
+        assert!(pep_deps.contains(&"flask".to_string()));
+        assert!(pep_deps.contains(&"pandas".to_string()));
+    }
 }
+
