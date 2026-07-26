@@ -87,3 +87,71 @@ fn detect_capability(
         None
     }
 }
+
+/// Check if a keyword appears as a distinct word in text (case-insensitive).
+/// A match is valid if the characters immediately before and after the matched keyword span
+/// are non-alphanumeric or string boundaries.
+pub fn contains_word(text: &str, keyword: &str) -> bool {
+    if text.is_empty() || keyword.is_empty() {
+        return false;
+    }
+
+    let text_lower = text.to_lowercase();
+    let kw_lower = keyword.to_lowercase();
+    let kw_bytes = kw_lower.as_bytes();
+    let text_bytes = text_lower.as_bytes();
+
+    let mut start = 0;
+    while let Some(pos) = text_lower[start..].find(&kw_lower) {
+        let match_start = start + pos;
+        let match_end = match_start + kw_bytes.len();
+
+        let left_boundary = match_start == 0
+            || !text_bytes[match_start - 1].is_ascii_alphanumeric();
+
+        let right_boundary = match_end == text_bytes.len()
+            || !text_bytes[match_end].is_ascii_alphanumeric();
+
+        if left_boundary && right_boundary {
+            return true;
+        }
+
+        start = match_start + 1;
+    }
+
+    false
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_contains_word_standalone() {
+        assert!(contains_word("leetcode", "leetcode"));
+        assert!(contains_word("my-leetcode-solutions", "leetcode"));
+        assert!(contains_word("advent_of_code_2023", "advent_of_code"));
+    }
+
+    #[test]
+    fn test_contains_word_embedded_false_positive() {
+        assert!(!contains_word("leetcoder", "leetcode"));
+        assert!(!contains_word("competitiveness", "competitive"));
+        assert!(!contains_word("uncompetitive", "competitive"));
+        assert!(!contains_word("hackerranker", "hackerrank"));
+    }
+
+    #[test]
+    fn test_contains_word_hyphenated() {
+        assert!(contains_word("my-competitive-programming-repo", "competitive-programming"));
+        assert!(contains_word("my-competitive-programming-repo", "competitive"));
+        assert!(contains_word("interview-prep-tool", "interview-prep"));
+    }
+
+    #[test]
+    fn test_contains_word_multiple_occurrences() {
+        // First occurrence is embedded (invalid), second occurrence is standalone (valid)
+        assert!(contains_word("uncompetitiveness-and-competitive-coding", "competitive"));
+    }
+}
+

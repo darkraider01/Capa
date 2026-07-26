@@ -140,22 +140,22 @@ pub async fn extract_user_capabilities_full(
         // ── 7. Negative Signals ─────────────────────────────────────────
         // Evaluate if this repository should be penalized (e.g. leetcode, adventofcode)
         let mut negative_penalty = 0.0;
-        let repo_lower = repo.name.to_lowercase();
-        let desc_lower = repo.description.as_deref().unwrap_or("").to_lowercase();
-        
+        let desc = repo.description.as_deref().unwrap_or("");
+
         for neg_kw in &registry.negative_signals.keywords {
-            if repo_lower.contains(neg_kw) || desc_lower.contains(neg_kw) {
-                negative_penalty = 0.25; // Linear drag 
+            if heuristics::contains_word(&repo.name, neg_kw)
+                || heuristics::contains_word(desc, neg_kw)
+            {
+                negative_penalty = 0.25; // Linear drag
                 break;
             }
         }
-        
+
         // Also check commits if repo name alone didn't trigger
         if negative_penalty == 0.0 {
             for commit in &commit_messages {
-                let msg_lower = commit.to_lowercase();
                 for neg_kw in &registry.negative_signals.keywords {
-                    if msg_lower.contains(neg_kw) {
+                    if heuristics::contains_word(commit, neg_kw) {
                         negative_penalty = 0.25;
                         break;
                     }
