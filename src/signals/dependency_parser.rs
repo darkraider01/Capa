@@ -17,6 +17,41 @@ pub struct DepCapabilityScores(
     pub HashMap<String, Vec<String>>,
 );
 
+/// Supported manifest filenames (checked at top of repo tree)
+pub const MANIFEST_FILES: &[&str] = &[
+    "Cargo.toml",
+    "package.json",
+    "requirements.txt",
+    "pyproject.toml",
+    "go.mod",
+    "pom.xml",
+    "build.gradle",
+    "build.gradle.kts",
+    "composer.json",
+    "Gemfile",
+];
+
+/// Filter and prioritize manifest files from a repository file tree.
+/// Matches manifest basenames against MANIFEST_FILES and .csproj files.
+/// Sorts by path depth ascending (shallowest root-level files first),
+/// using lowercased path as a deterministic tie-breaker, then truncates to max_manifests.
+pub fn filter_and_prioritize_manifests(tree: &[String], max_manifests: usize) -> Vec<String> {
+    let mut matches: Vec<String> = tree
+        .iter()
+        .filter(|p| {
+            let basename = p.split('/').last().unwrap_or(p);
+            MANIFEST_FILES.iter().any(|m| {
+                m.eq_ignore_ascii_case(basename) || p.to_lowercase().ends_with(".csproj")
+            })
+        })
+        .cloned()
+        .collect();
+
+    matches.sort_by_key(|p| (p.matches('/').count(), p.to_lowercase()));
+    matches.truncate(max_manifests);
+    matches
+}
+
 /// Parse raw package names from a manifest file.
 /// Returns lowercase, version-stripped package names.
 pub fn parse_dependencies(filename: &str, content: &str) -> Vec<String> {
@@ -581,5 +616,28 @@ dependencies = [
         assert!(pep_deps.contains(&"flask".to_string()));
         assert!(pep_deps.contains(&"pandas".to_string()));
     }
+
+    #[test]
+    fn test_filter_and_prioritize_manifests() {
+        let tree = vec![
+            "packages/service-c/package.json".to_string(),
+            "packages/service-a/package.json".to_string(),
+            "packages/service-b/package.json".to_string(),
+            "package.json".to_string(),
+            "src/App.csproj".to_string(),
+            "README.md".to_string(),
+        ];
+
+        let selected = filter_and_prioritize_manifests(&tree, 3);
+        assert_eq!(
+            selected,
+            vec![
+                "package.json".to_string(),
+                "src/App.csproj".to_string(),
+                "packages/service-a/package.json".to_string(),
+            ]
+        );
+    }
 }
+
 

@@ -18,20 +18,6 @@ use crate::signals::{
     project_structure,
 };
 
-// Supported manifest filenames (checked at top of repo tree)
-const MANIFEST_FILES: &[&str] = &[
-    "Cargo.toml",
-    "package.json",
-    "requirements.txt",
-    "pyproject.toml",
-    "go.mod",
-    "pom.xml",
-    "build.gradle",
-    "build.gradle.kts",
-    "composer.json",
-    "Gemfile",
-];
-
 /// Full multi-channel extraction for a user.
 /// Requires a live GitHub client for tree/content/language fetches.
 pub async fn extract_user_capabilities_full(
@@ -88,18 +74,7 @@ pub async fn extract_user_capabilities_full(
         {
             Ok(tree) => {
                 // 2. Dependency channel
-                let manifest_paths: Vec<String> = tree
-                    .iter()
-                    .filter(|p| {
-                        let basename = p.split('/').last().unwrap_or(p);
-                        MANIFEST_FILES.iter().any(|m| {
-                            m.eq_ignore_ascii_case(basename)
-                                || p.to_lowercase().ends_with(".csproj")
-                        })
-                    })
-                    .take(3) // max 3 manifests per repo
-                    .cloned()
-                    .collect();
+                let manifest_paths = dependency_parser::filter_and_prioritize_manifests(&tree, 3);
 
                 let mut dep_cap_scores: HashMap<String, f32> = HashMap::new();
                 let mut dep_cap_evidence: HashMap<String, Vec<String>> = HashMap::new();
