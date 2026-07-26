@@ -251,6 +251,7 @@ pub fn aggregate_all_signals(
         }
     }
 
+    apply_correlation_boosts(&mut capabilities, weights.correlation_boost_factor);
     capabilities
 }
 
@@ -521,4 +522,113 @@ pub mod tests {
 
         assert_eq!(cap.evidence_repos, vec!["repo-with-deps-only".to_string()]);
     }
+
+    #[test]
+    pub fn test_aggregate_all_signals_applies_correlation_boost_multiple_capabilities() {
+        let mut repo = RepoSignals {
+            name: "multi-cap-repo".to_string(),
+            language: Some("Rust".to_string()),
+            stars: 10,
+            keyword_signals: Vec::new(),
+            dep_scores: HashMap::new(),
+            dep_evidence: HashMap::new(),
+            filename_scores: HashMap::new(),
+            structure_scores: HashMap::new(),
+            language_scores: HashMap::new(),
+            activity_scores: HashMap::new(),
+            negative_signal_penalty: 0.0,
+            age_decay: 1.0,
+            commit_count: 5,
+        };
+
+        repo.dep_scores.insert("MachineLearning".to_string(), 0.8);
+        repo.dep_scores.insert("DistributedAlgorithms".to_string(), 0.7);
+
+        let weights = ScoringWeights::default();
+        let cap_ids = vec!["MachineLearning", "DistributedAlgorithms"];
+
+        let caps = aggregate_all_signals(
+            "test_user".to_string(),
+            vec![repo],
+            10,
+            &weights,
+            &cap_ids,
+            0.0,
+        );
+
+        let ml_cap = caps
+            .iter()
+            .find(|c| c.capability_type.as_str() == "MachineLearning")
+            .expect("MachineLearning should be extracted");
+        let dist_cap = caps
+            .iter()
+            .find(|c| c.capability_type.as_str() == "DistributedAlgorithms")
+            .expect("DistributedAlgorithms should be extracted");
+
+        assert!(
+            ml_cap.signal_breakdown.correlation_boost > 0.0,
+            "ML capability should receive a positive correlation boost"
+        );
+        assert!(
+            dist_cap.signal_breakdown.correlation_boost > 0.0,
+            "DistributedAlgorithms capability should receive a positive correlation boost"
+        );
+
+        // Expected boost calculation: other_conf * boost_factor * 0.1
+        // Verify correlation_boost matches the expected boost factor mathematically
+        let boost_factor = weights.correlation_boost_factor; // 0.1 by default
+        let dist_pre_boost_conf = dist_cap.confidence - dist_cap.signal_breakdown.correlation_boost;
+        let expected_ml_boost = (dist_pre_boost_conf * boost_factor * 0.1).min(0.1);
+
+        assert!(
+            (ml_cap.signal_breakdown.correlation_boost - expected_ml_boost).abs() < 1e-5,
+            "ML boost ({}) did not match expected ({})",
+            ml_cap.signal_breakdown.correlation_boost,
+            expected_ml_boost
+        );
+    }
+
+    #[test]
+    pub fn test_aggregate_all_signals_no_correlation_boost_single_capability() {
+        let mut repo = RepoSignals {
+            name: "single-cap-repo".to_string(),
+            language: Some("Rust".to_string()),
+            stars: 5,
+            keyword_signals: Vec::new(),
+            dep_scores: HashMap::new(),
+            dep_evidence: HashMap::new(),
+            filename_scores: HashMap::new(),
+            structure_scores: HashMap::new(),
+            language_scores: HashMap::new(),
+            activity_scores: HashMap::new(),
+            negative_signal_penalty: 0.0,
+            age_decay: 1.0,
+            commit_count: 5,
+        };
+
+        repo.dep_scores.insert("DistributedAlgorithms".to_string(), 0.7);
+
+        let weights = ScoringWeights::default();
+        let cap_ids = vec!["DistributedAlgorithms"];
+
+        let caps = aggregate_all_signals(
+            "test_user".to_string(),
+            vec![repo],
+            10,
+            &weights,
+            &cap_ids,
+            0.0,
+        );
+
+        let dist_cap = caps
+            .iter()
+            .find(|c| c.capability_type.as_str() == "DistributedAlgorithms")
+            .expect("DistributedAlgorithms should be extracted");
+
+        assert_eq!(
+            dist_cap.signal_breakdown.correlation_boost, 0.0,
+            "Single capability should have zero correlation boost"
+        );
+    }
 }
+
