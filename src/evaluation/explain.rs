@@ -42,7 +42,7 @@ pub async fn explain_user(pool: &PgPool, username: &str, _gh: &GithubClient, jso
     }
 
     let mut caps_map: HashMap<String, f64> = HashMap::new();
-    let mut evidence_list: Vec<String> = Vec::new(); // In a real scenario, we'd query evidence logs
+    let evidence_list: Vec<String> = Vec::new(); // In a real scenario, we'd query evidence logs
 
     for row in &rows {
         let cap_type: String = row.get("capability_type");

@@ -6,4 +6,4 @@ pub mod scoring;
 pub mod storage;
 
 pub use models::CapabilityType;
-pub use pipeline::extract_user_capabilities;
+pub use pipeline::{extract_user_capabilities, extract_user_capabilities_full};

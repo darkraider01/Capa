@@ -1,4 +1,4 @@
-﻿import os
+import os
 import sys
 import json
 import hashlib
@@ -20,7 +20,7 @@ except ImportError:
     sys.exit(1)
 
 # Load environment variables
-load_dotenv()
+load_dotenv(override=True)
 
 # Configuration
 CACHE_DIR = Path(".cache/llm")
@@ -139,7 +139,12 @@ def execute_rust_json_command(args: list) -> dict | None:
         return None
         
     except subprocess.CalledProcessError as e:
-        print(f"Rust Deterministic Engine Error: {e.stderr}", file=sys.stderr)
+        err_msg = (e.stderr or e.stdout or "").strip()
+        if "pool timed out" in err_msg.lower() or "connection" in err_msg.lower() or "refused" in err_msg.lower():
+            print("\n❌ Database Error: Could not connect to PostgreSQL database.")
+            print("   Please start your PostgreSQL server and verify DATABASE_URL in .env.")
+        else:
+            print(f"\n❌ Engine Error: {err_msg}")
         return None
     except json.JSONDecodeError:
         print(f"Failed to parse JSON from Rust engine. Raw output:\n{result.stdout}", file=sys.stderr)
@@ -156,11 +161,19 @@ def get_registry_definitions() -> str:
         definitions.append(f"- {cap.get('id', 'Unknown')}: {cap.get('description', '')}")
     return "\n".join(definitions)
 
+def fetch_profile_or_ingest(username: str) -> dict | None:
+    profile_data = execute_rust_json_command(["--explain", username])
+    if not profile_data or "error" in profile_data or not profile_data.get("capabilities"):
+        print(f"⚡ User '{username}' not in local database. Triggering automatic dynamic GitHub ingestion...")
+        execute_rust_json_command(["--reingest", username])
+        profile_data = execute_rust_json_command(["--explain", username])
+    return profile_data
+
 def run_profile_explain(username: str):
     print(f"🔍 Fetching deterministic scores for {username}...")
     
-    # 1. Ask Rust for the structured truth
-    profile_data = execute_rust_json_command(["--explain", username])
+    # 1. Ask Rust for the structured truth (with dynamic ingestion if missing)
+    profile_data = fetch_profile_or_ingest(username)
     if not profile_data:
         print("Failed to load profile data from the search engine.")
         return
@@ -392,7 +405,7 @@ class FitEvaluation(BaseModel):
 def run_evaluate_fit(username: str, job_description: str):
     print(f"🎯 Evaluating fit for {username}...")
 
-    profile_data = execute_rust_json_command(["--explain", username])
+    profile_data = fetch_profile_or_ingest(username)
     if not profile_data:
         print("Failed to load profile data."); return
     if "error" in profile_data:
@@ -460,7 +473,7 @@ def run_growth_plan(username: str):
     print(f"📈 Building growth plan for {username}...")
 
     # Get the user's own profile
-    profile_data = execute_rust_json_command(["--explain", username])
+    profile_data = fetch_profile_or_ingest(username)
     if not profile_data or "error" in profile_data:
         print("Failed to load profile."); return
 
@@ -602,7 +615,7 @@ Compose a team structure recommendation."""
 def run_generate_interview(username: str):
     print(f"📝 Generating interview questions for {username}...")
 
-    profile_data = execute_rust_json_command(["--explain", username])
+    profile_data = fetch_profile_or_ingest(username)
     if not profile_data:
         print("Failed to load profile."); return
     if "error" in profile_data:

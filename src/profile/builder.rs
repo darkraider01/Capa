@@ -17,8 +17,10 @@ pub struct CapabilitySummary {
     pub evidence_keywords: Vec<String>,
 }
 
+use sqlx::Row;
+
 pub async fn build_profile(pool: &PgPool, username: &str) -> Result<CapabilityProfile> {
-    let rows = sqlx::query!(
+    let rows = sqlx::query(
         r#"
         SELECT 
             capability_type,
@@ -30,8 +32,8 @@ pub async fn build_profile(pool: &PgPool, username: &str) -> Result<CapabilityPr
         WHERE user_login = $1
         ORDER BY normalized_score DESC
         "#,
-        username
     )
+    .bind(username)
     .fetch_all(pool)
     .await?;
 
@@ -44,17 +46,22 @@ pub async fn build_profile(pool: &PgPool, username: &str) -> Result<CapabilityPr
 
     let mut summaries = Vec::new();
     for row in rows {
+        let capability_type: String = row.get("capability_type");
+        let normalized_score: f64 = row.get("normalized_score");
+        let tier: String = row.get("tier");
+        let evidence_val: serde_json::Value = row.get("evidence");
+        let evidence_repos_val: Option<serde_json::Value> = row.get("evidence_repos");
+
         let evidence_keywords: Vec<String> =
-            serde_json::from_value(row.evidence).unwrap_or_default();
-        let evidence_repos: Vec<String> = row
-            .evidence_repos
+            serde_json::from_value(evidence_val).unwrap_or_default();
+        let evidence_repos: Vec<String> = evidence_repos_val
             .map(|v| serde_json::from_value(v).unwrap_or_default())
             .unwrap_or_default();
 
         summaries.push(CapabilitySummary {
-            capability_type: row.capability_type,
-            normalized_score: row.normalized_score as f32,
-            tier: row.tier,
+            capability_type,
+            normalized_score: normalized_score as f32,
+            tier,
             evidence_repos,
             evidence_keywords,
         });

@@ -21,8 +21,8 @@ use sqlx::postgres::PgPoolOptions;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Load environment variables from .env file
-    dotenvy::dotenv().ok();
+    // Load environment variables from .env file (overriding stale process env)
+    dotenvy::from_filename_override(".env").ok();
 
     // Get configuration from environment
     let database_url =
@@ -532,6 +532,11 @@ async fn main() -> Result<()> {
                  (SELECT id FROM repositories WHERE user_login = $1)"
             )
             .bind(&target).execute(&pool).await?;
+            sqlx::query(
+                "DELETE FROM dependencies WHERE repo_id IN \
+                 (SELECT id FROM repositories WHERE user_login = $1)"
+            )
+            .bind(&target).execute(&pool).await?;
             sqlx::query("DELETE FROM repositories WHERE user_login = $1")
                 .bind(&target).execute(&pool).await?;
             sqlx::query("DELETE FROM users WHERE github_login = $1")
@@ -543,7 +548,7 @@ async fn main() -> Result<()> {
             match pipeline::ingest_user(&github_client, &pool, &target).await {
                 Ok(_) => {
                     println!("✅ Ingestion complete. Extracting capabilities...");
-                    match extraction::extract_user_capabilities(&pool, &target).await {
+                    match extraction::extract_user_capabilities_full(&pool, &github_client, &target, &registry).await {
                         Ok(mut capabilities) => {
                             for cap in &mut capabilities {
                                 cap.normalized_score = calibration::calibrate_score(
