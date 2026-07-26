@@ -102,10 +102,11 @@ pub fn dep_signals(
         let idf_normalized = (idf / (100.0_f32).ln()).min(1.0);
         
         for (cap_id, is_core) in caps_info {
-            // Core dependencies get 100% of the weight, ecosystem gets 40%
-            let base_multiplier = if *is_core { 1.0_f32 } else { 0.4_f32 };
-            let raw_score = 0.8_f32 * idf_normalized * base_multiplier;
-            let signal_score = raw_score.max(0.05); // minimum signal floor
+            // Core dependencies get base 0.34, ecosystem gets base 0.17
+            let base_score = if *is_core { 0.34_f32 } else { 0.17_f32 };
+            // IDF modifier scales baseline from 0.6x (common) up to 1.0x (rare)
+            let idf_modifier = 0.6_f32 + 0.4_f32 * idf_normalized;
+            let signal_score = (base_score * idf_modifier).max(0.05);
 
             let entry = scores.entry(cap_id.clone()).or_insert(0.0);
             *entry = entry.max(signal_score);
@@ -636,6 +637,66 @@ dependencies = [
                 "src/App.csproj".to_string(),
                 "packages/service-a/package.json".to_string(),
             ]
+        );
+    }
+
+    #[test]
+    fn test_dep_signals_idf_and_baseline_score() {
+        let registry = CapabilityRegistry::load().unwrap();
+
+        let mut dep_freqs_common = HashMap::new();
+        dep_freqs_common.insert("tokio".to_string(), 100);
+
+        let mut dep_freqs_rare = HashMap::new();
+        dep_freqs_rare.insert("tokio".to_string(), 1);
+
+        // Core dependency: tokio -> ConcurrentProgramming
+        let DepCapabilityScores(scores_common, _) =
+            dep_signals(&["tokio".to_string()], &registry, &dep_freqs_common, 100);
+
+        let DepCapabilityScores(scores_rare, _) =
+            dep_signals(&["tokio".to_string()], &registry, &dep_freqs_rare, 100);
+
+        let common_score = *scores_common.get("ConcurrentProgramming").unwrap();
+        let rare_score = *scores_rare.get("ConcurrentProgramming").unwrap();
+
+        // Common core dependency gets healthy baseline (>= 0.20), not crushed to 0.05
+        assert!(common_score >= 0.20, "Common score should be >= 0.20, got {}", common_score);
+        // Rare core dependency scores higher than common core dependency
+        assert!(rare_score > common_score, "Rare ({}) should exceed common ({})", rare_score, common_score);
+    }
+
+    #[test]
+    fn test_dep_score_fits_under_max_repo_contribution_cap() {
+        let registry = CapabilityRegistry::load().unwrap();
+        let cap = crate::extraction::config::ScoringWeights::default().max_repo_contribution;
+
+        let mut dep_freqs_common = HashMap::new();
+        dep_freqs_common.insert("tokio".to_string(), 100);
+        let mut dep_freqs_rare = HashMap::new();
+        dep_freqs_rare.insert("tokio".to_string(), 1);
+
+        let DepCapabilityScores(scores_common, _) =
+            dep_signals(&["tokio".to_string()], &registry, &dep_freqs_common, 100);
+        let DepCapabilityScores(scores_rare, _) =
+            dep_signals(&["tokio".to_string()], &registry, &dep_freqs_rare, 100);
+
+        let raw_common = *scores_common.get("ConcurrentProgramming").unwrap();
+        let raw_rare = *scores_rare.get("ConcurrentProgramming").unwrap();
+
+        // Raw scores must sit strictly under the 0.35 max_repo_contribution cap
+        assert!(raw_common <= cap, "raw_common ({}) exceeds cap ({})", raw_common, cap);
+        assert!(raw_rare <= cap, "raw_rare ({}) exceeds cap ({})", raw_rare, cap);
+
+        // After applying the cap min(cap), rarity differentiation MUST be preserved!
+        let post_cap_common = raw_common.min(cap);
+        let post_cap_rare = raw_rare.min(cap);
+
+        assert!(
+            post_cap_rare > post_cap_common,
+            "Post-cap rare ({}) must be strictly greater than post-cap common ({})",
+            post_cap_rare,
+            post_cap_common
         );
     }
 }
