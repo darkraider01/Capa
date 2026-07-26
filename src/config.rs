@@ -79,6 +79,8 @@ pub struct CalibrationConfig {
 pub struct TypeStats {
     pub mean: f32,
     pub std_dev: f32,
+    #[serde(default)]
+    pub sample_count: usize,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

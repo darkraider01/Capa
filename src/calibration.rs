@@ -12,8 +12,10 @@ pub fn calibrate_score(raw_score: f32, capability_type: &str, config: &SearchCon
         return raw_score;
     }
 
+    let min_samples = config.ranking.calibration.min_samples;
+
     if let Some(stats) = config.ranking.calibration.stats.get(capability_type) {
-        if stats.std_dev > 0.0 {
+        if stats.sample_count >= min_samples && stats.std_dev > 0.0 {
             let z_score = (raw_score - stats.mean) / stats.std_dev;
 
             // Map Z-score [-3.0, 3.0] to [0.0, 1.0]
@@ -24,7 +26,7 @@ pub fn calibrate_score(raw_score: f32, capability_type: &str, config: &SearchCon
         }
     }
 
-    // Default to raw score if no stats available or std_dev is 0
+    // Default to raw score if no stats available, sample_count < min_samples, or std_dev is 0
     raw_score
 }
 
@@ -44,6 +46,7 @@ mod tests {
             TypeStats {
                 mean: 0.5,
                 std_dev: 0.1,
+                sample_count: 10,
             },
         );
 
@@ -117,5 +120,22 @@ mod tests {
         assert_eq!(score_high, 1.0);
         let score_low = calibrate_score(0.0, "TestType", &config); // Z=-5.0
         assert_eq!(score_low, 0.0);
+    }
+
+    #[test]
+    fn test_calibrate_score_insufficient_samples() {
+        let mut config = mock_config();
+        // Lower sample_count below min_samples (5 < 10)
+        config
+            .ranking
+            .calibration
+            .stats
+            .get_mut("TestType")
+            .unwrap()
+            .sample_count = 5;
+
+        let score = calibrate_score(0.8, "TestType", &config);
+        // Must fall back to raw score (0.8) instead of calibrated Z-score (1.0)
+        assert_eq!(score, 0.8);
     }
 }

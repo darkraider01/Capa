@@ -610,7 +610,11 @@ async fn main() -> Result<()> {
 
             new_stats.insert(
                 cap_type.clone(),
-                crate::config::TypeStats { mean, std_dev },
+                crate::config::TypeStats {
+                    mean,
+                    std_dev,
+                    sample_count: scores.len(),
+                },
             );
         }
 
