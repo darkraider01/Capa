@@ -94,11 +94,42 @@ fn parse_cargo_toml(content: &str) -> Vec<String> {
     for line in content.lines() {
         let trimmed = line.trim();
 
-        // Detect section headers
+        // Detect section headers starting with '[' and ending with ']'
         if trimmed.starts_with('[') {
-            in_deps = trimmed == "[dependencies]"
-                || trimmed == "[dev-dependencies]"
-                || trimmed == "[build-dependencies]";
+            let header = trimmed
+                .trim_start_matches('[')
+                .trim_end_matches(']')
+                .trim();
+
+            // 1. Sub-table dependency headers: [dependencies.tokio], [dev-dependencies.criterion], [workspace.dependencies.serde]
+            let subtable_pkg = if let Some(pos) = header.find("dependencies.") {
+                Some(&header[pos + "dependencies.".len()..])
+            } else {
+                None
+            };
+
+            if let Some(raw_pkg) = subtable_pkg {
+                let pkg = raw_pkg
+                    .trim()
+                    .trim_matches(|c: char| c == '"' || c == '\'' || c == ']');
+                if !pkg.is_empty() && !pkg.starts_with('#') {
+                    deps.push(pkg.to_lowercase());
+                }
+                in_deps = false;
+                continue;
+            }
+
+            // 2. Section dependency headers: [dependencies], [dev-dependencies], [build-dependencies], [workspace.dependencies], [target.'cfg(...)'.dependencies]
+            if header.ends_with("dependencies")
+                || header.ends_with("dev-dependencies")
+                || header.ends_with("build-dependencies")
+            {
+                in_deps = true;
+                continue;
+            }
+
+            // 3. Any other header (e.g. [package], [profile.release]):
+            in_deps = false;
             continue;
         }
 
@@ -113,7 +144,9 @@ fn parse_cargo_toml(content: &str) -> Vec<String> {
 
         // Parse "name = ..." or "name = { ... }"
         if let Some(eq_pos) = trimmed.find('=') {
-            let key = trimmed[..eq_pos].trim().trim_matches('"');
+            let key = trimmed[..eq_pos]
+                .trim()
+                .trim_matches(|c: char| c == '"' || c == '\'');
             if !key.is_empty() && !key.starts_with('#') {
                 deps.push(key.to_lowercase());
             }
@@ -418,6 +451,42 @@ criterion = "0.5"
         assert!(deps.contains(&"axum".to_string()));
         assert!(deps.contains(&"criterion".to_string()));
     }
+
+    #[test]
+    fn test_cargo_toml_subtable_and_target_parsing() {
+        let content = r#"
+[package]
+name = "subtable-app"
+
+[dependencies.tokio]
+version = "1.0"
+features = ["full"]
+
+[dev-dependencies.criterion]
+version = "0.5"
+
+[workspace.dependencies]
+serde = "1.0"
+
+[target.'cfg(unix)'.dependencies]
+openssl = "0.10"
+
+[target.'cfg(windows)'.dependencies.winapi]
+version = "0.3"
+"#;
+        let deps = parse_dependencies("Cargo.toml", content);
+        assert!(deps.contains(&"tokio".to_string()), "tokio should be parsed from subtable header");
+        assert!(deps.contains(&"criterion".to_string()), "criterion should be parsed from dev subtable header");
+        assert!(deps.contains(&"serde".to_string()), "serde should be parsed from workspace.dependencies");
+        assert!(deps.contains(&"openssl".to_string()), "openssl should be parsed from target dependencies");
+        assert!(deps.contains(&"winapi".to_string()), "winapi should be parsed from target subtable header");
+
+        // Regression guard: ensure sub-table body properties are not parsed as dependency names
+        assert!(!deps.contains(&"version".to_string()), "sub-table 'version' key must not be parsed as dep");
+        assert!(!deps.contains(&"features".to_string()), "sub-table 'features' key must not be parsed as dep");
+        assert!(!deps.contains(&"full".to_string()), "sub-table feature string must not be parsed as dep");
+    }
+
 
     #[test]
     fn test_package_json_parsing() {
