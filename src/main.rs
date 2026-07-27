@@ -238,7 +238,7 @@ async fn main() -> Result<()> {
     .execute(&pool)
     .await?;
 
-    // Capabilities table with ALL columns including new ones
+    // Capabilities table with ALL columns including experience_tier
     sqlx::query(
         r#"
         CREATE TABLE IF NOT EXISTS capabilities (
@@ -248,6 +248,7 @@ async fn main() -> Result<()> {
             confidence FLOAT NOT NULL,
             normalized_score FLOAT NOT NULL DEFAULT 0,
             tier TEXT NOT NULL,
+            experience_tier TEXT,
             evidence JSONB NOT NULL,
             evidence_repos JSONB,
             keyword_score FLOAT,
@@ -266,6 +267,19 @@ async fn main() -> Result<()> {
     )
     .execute(&pool)
     .await?;
+
+    // Migration for capabilities: Ensure experience_tier column exists on existing databases
+    let check_exp_tier_col: Result<(i64,), _> = sqlx::query_as(
+        "SELECT count(column_name) FROM information_schema.columns WHERE table_name='capabilities' AND column_name='experience_tier'"
+    )
+    .fetch_one(&pool)
+    .await;
+
+    if let Ok((count,)) = check_exp_tier_col {
+        if count == 0 {
+            let _ = sqlx::query("ALTER TABLE capabilities ADD COLUMN IF NOT EXISTS experience_tier TEXT").execute(&pool).await;
+        }
+    }
 
     // Migration for capability_vectors: If old schema exists (no 'scores' column), drop it so it can be recreated
     let check_vectors_schema: Result<(i64,), _> = sqlx::query_as(

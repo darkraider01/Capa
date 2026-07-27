@@ -35,12 +35,22 @@ fn print_summaries(summaries: &[CapabilitySummary]) {
     }
 
     for sym in summaries {
-        println!(
-            "  {}: {} ({:.2})",
-            sym.capability_type,
-            sym.tier.to_uppercase(),
-            sym.normalized_score
-        );
+        if sym.experience_tier.is_empty() {
+            println!(
+                "  {}: {} ({:.2})",
+                sym.capability_type,
+                sym.tier.to_uppercase(),
+                sym.normalized_score
+            );
+        } else {
+            println!(
+                "  {}: {} • Cohort: {} ({:.2})",
+                sym.capability_type,
+                sym.tier.to_uppercase(),
+                sym.experience_tier.to_uppercase(),
+                sym.normalized_score
+            );
+        }
     }
 }
 

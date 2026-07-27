@@ -28,21 +28,23 @@ pub async fn insert_capability(pool: &PgPool, capability: &ExtractedCapability) 
     let dependency_score = safe_f32(capability.signal_breakdown.dependency_score);
     let activity_score = safe_f32(capability.signal_breakdown.activity_score);
     let normalized_score = safe_f32(capability.normalized_score);
+    let exp_tier_str = capability.experience_tier.map(|t| t.as_str().to_string());
 
     sqlx::query(
         r#"
         INSERT INTO capabilities (
-            id, user_login, capability_type, confidence, normalized_score, tier,
+            id, user_login, capability_type, confidence, normalized_score, tier, experience_tier,
             evidence, evidence_repos,
             keyword_score, repo_score, language_score, structural_score,
             dependency_score, activity_score,
             raw_score, time_decay_factor, correlation_boost,
             created_at
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
         ON CONFLICT (id) DO UPDATE SET
             normalized_score = EXCLUDED.normalized_score,
-            tier = EXCLUDED.tier
+            tier = EXCLUDED.tier,
+            experience_tier = EXCLUDED.experience_tier
         "#,
     )
     .bind(capability.id)
@@ -51,6 +53,7 @@ pub async fn insert_capability(pool: &PgPool, capability: &ExtractedCapability) 
     .bind(confidence)
     .bind(normalized_score)
     .bind(capability.tier.as_str())
+    .bind(exp_tier_str)
     .bind(evidence_json)
     .bind(repos_json)
     .bind(keyword_score)
@@ -106,7 +109,7 @@ pub async fn load_all_capabilities(pool: &PgPool) -> Result<Vec<ExtractedCapabil
     let rows = sqlx::query(
         r#"
         SELECT 
-            id, user_login, capability_type, confidence, tier,
+            id, user_login, capability_type, confidence, tier, experience_tier,
             evidence, evidence_repos,
             keyword_score, repo_score, language_score, structural_score,
             dependency_score, activity_score,
@@ -129,6 +132,9 @@ pub async fn load_all_capabilities(pool: &PgPool) -> Result<Vec<ExtractedCapabil
         let normalized_score_f64: f64 = row.try_get("normalized_score").unwrap_or(0.0);
         let normalized_score = normalized_score_f64 as f32;
         let tier_str: String = row.get("tier");
+        let exp_tier_str: Option<String> = row.try_get("experience_tier").ok().flatten();
+        let experience_tier = exp_tier_str.and_then(|s| crate::calibration::ExperienceTier::from_str(&s));
+
         let evidence_json: serde_json::Value = row.get("evidence");
         let repos_json: serde_json::Value = row
             .try_get("evidence_repos")
@@ -168,7 +174,7 @@ pub async fn load_all_capabilities(pool: &PgPool) -> Result<Vec<ExtractedCapabil
             confidence,
             normalized_score,
             tier,
-            experience_tier: None,
+            experience_tier,
             evidence_keywords,
             evidence_repos,
             evidence_deps: Vec::new(),
@@ -179,3 +185,32 @@ pub async fn load_all_capabilities(pool: &PgPool) -> Result<Vec<ExtractedCapabil
 
     Ok(capabilities)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::calibration::ExperienceTier;
+    use crate::extraction::config::CapabilityTier;
+    use crate::extraction::models::{CapabilityType, SignalBreakdown};
+
+    #[test]
+    fn test_extracted_capability_experience_tier_serialization() {
+        let mut cap = ExtractedCapability::new(
+            "test_user".to_string(),
+            CapabilityType::new("MachineLearning"),
+            0.85,
+            CapabilityTier::Proven,
+            SignalBreakdown::zero(),
+            vec!["pytorch".to_string()],
+            vec!["ml-repo".to_string()],
+        );
+
+        assert_eq!(cap.experience_tier, None);
+        cap.experience_tier = Some(ExperienceTier::Developing);
+
+        assert_eq!(cap.experience_tier, Some(ExperienceTier::Developing));
+        assert_eq!(cap.experience_tier.unwrap().as_str(), "Developing");
+        assert_eq!(ExperienceTier::from_str("DEVELOPING"), Some(ExperienceTier::Developing));
+    }
+}
+

@@ -27,6 +27,7 @@ pub async fn build_profile(pool: &PgPool, username: &str) -> Result<CapabilityPr
             capability_type,
             normalized_score,
             tier,
+            experience_tier,
             evidence,
             evidence_repos
         FROM capabilities
@@ -50,6 +51,8 @@ pub async fn build_profile(pool: &PgPool, username: &str) -> Result<CapabilityPr
         let capability_type: String = row.get("capability_type");
         let normalized_score: f64 = row.get("normalized_score");
         let tier: String = row.get("tier");
+        let exp_tier: Option<String> = row.try_get("experience_tier").ok().flatten();
+        let experience_tier = exp_tier.unwrap_or_default();
         let evidence_val: serde_json::Value = row.get("evidence");
         let evidence_repos_val: Option<serde_json::Value> = row.get("evidence_repos");
 
@@ -63,7 +66,7 @@ pub async fn build_profile(pool: &PgPool, username: &str) -> Result<CapabilityPr
             capability_type,
             normalized_score: normalized_score as f32,
             tier,
-            experience_tier: String::new(),
+            experience_tier,
             evidence_repos,
             evidence_keywords,
         });
