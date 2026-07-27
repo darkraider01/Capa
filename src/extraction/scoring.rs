@@ -39,112 +39,147 @@ pub fn aggregate_all_signals(
     capability_ids: &[&str],
     min_confidence: f32,
 ) -> Vec<ExtractedCapability> {
-    // Per-capability accumulator {cap_id → channel scores summed across repos}
+    struct RepoCapSignal {
+        repo_name: String,
+        keyword: f32,
+        dependency: f32,
+        filename: f32,
+        structure: f32,
+        language: f32,
+        activity: f32,
+        penalty: f32,
+        total_signal: f32,
+        evidence_keywords: Vec<String>,
+        evidence_deps: Vec<String>,
+    }
+
+    // Map: cap_id -> list of RepoCapSignal across repos
+    let mut cap_repo_signals: HashMap<String, Vec<RepoCapSignal>> = HashMap::new();
+
+    for repo in &repos {
+        let decay = repo.age_decay;
+        let penalty = repo.negative_signal_penalty;
+
+        // Keyword channel per cap for this repo
+        let mut kw_by_cap: HashMap<String, (f32, Vec<String>)> = HashMap::new();
+        for signal in &repo.keyword_signals {
+            let (entry_score, entry_kws) = kw_by_cap
+                .entry(signal.capability_type.0.clone())
+                .or_insert_with(|| (0.0, Vec::new()));
+            *entry_score = entry_score.max(signal.score);
+            entry_kws.extend(signal.keywords.iter().cloned());
+        }
+
+        // Collect all cap_ids that have any score/signal in this repo
+        let mut repo_cap_ids: HashSet<String> = HashSet::new();
+        for id in kw_by_cap.keys() {
+            repo_cap_ids.insert(id.clone());
+        }
+        for id in repo.dep_scores.keys() {
+            repo_cap_ids.insert(id.clone());
+        }
+        for id in repo.filename_scores.keys() {
+            repo_cap_ids.insert(id.clone());
+        }
+        for id in repo.structure_scores.keys() {
+            repo_cap_ids.insert(id.clone());
+        }
+        for id in repo.language_scores.keys() {
+            repo_cap_ids.insert(id.clone());
+        }
+        for id in repo.activity_scores.keys() {
+            repo_cap_ids.insert(id.clone());
+        }
+
+        for cap_id in repo_cap_ids {
+            let (kw_raw, kws) = kw_by_cap.get(&cap_id).cloned().unwrap_or((0.0, Vec::new()));
+            let capped_kw = (kw_raw * decay).min(weights.max_repo_contribution);
+
+            let dep_raw = repo.dep_scores.get(&cap_id).copied().unwrap_or(0.0);
+            let capped_dep = (dep_raw * decay).min(weights.max_repo_contribution);
+
+            let filename_raw = repo.filename_scores.get(&cap_id).copied().unwrap_or(0.0);
+            let capped_filename = (filename_raw * decay).min(weights.max_repo_contribution);
+
+            let structure_raw = repo.structure_scores.get(&cap_id).copied().unwrap_or(0.0);
+            let capped_structure = (structure_raw * decay).min(weights.max_repo_contribution);
+
+            let lang_score = repo.language_scores.get(&cap_id).copied().unwrap_or(0.0);
+            let act_score = repo.activity_scores.get(&cap_id).copied().unwrap_or(0.0);
+
+            let total_signal = capped_kw * weights.channels.keyword
+                + capped_dep * weights.channels.dependency
+                + capped_filename * weights.channels.filename
+                + capped_structure * weights.channels.structure
+                + act_score * weights.channels.activity;
+
+            let deps = repo.dep_evidence.get(&cap_id).cloned().unwrap_or_default();
+
+            cap_repo_signals
+                .entry(cap_id)
+                .or_default()
+                .push(RepoCapSignal {
+                    repo_name: repo.name.clone(),
+                    keyword: capped_kw,
+                    dependency: capped_dep,
+                    filename: capped_filename,
+                    structure: capped_structure,
+                    language: lang_score,
+                    activity: act_score,
+                    penalty,
+                    total_signal,
+                    evidence_keywords: kws,
+                    evidence_deps: deps,
+                });
+        }
+    }
+
+    // Accumulators per capability (averaged over effective Top-N repo count)
     let mut cap_keyword: HashMap<String, f32> = HashMap::new();
     let mut cap_dep: HashMap<String, f32> = HashMap::new();
     let mut cap_filename: HashMap<String, f32> = HashMap::new();
     let mut cap_structure: HashMap<String, f32> = HashMap::new();
     let mut cap_language: HashMap<String, f32> = HashMap::new();
     let mut cap_activity: HashMap<String, f32> = HashMap::new();
-    // Accumulated negative penalty for capabilities from bad repos
     let mut cap_negative_penalty: HashMap<String, f32> = HashMap::new();
     let mut cap_keywords_evidence: HashMap<String, Vec<String>> = HashMap::new();
     let mut cap_repos_evidence: HashMap<String, Vec<String>> = HashMap::new();
     let mut cap_deps_evidence: HashMap<String, Vec<String>> = HashMap::new();
 
-    let repo_count = repos.len() as f32;
+    for (cap_id, mut contribs) in cap_repo_signals {
+        // Sort repos by total_signal descending (break ties by repo_name)
+        contribs.sort_by(|a, b| {
+            b.total_signal
+                .partial_cmp(&a.total_signal)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| a.repo_name.cmp(&b.repo_name))
+        });
 
-    for repo in &repos {
-        // Repo contribution cap: a single repo can contribute at most max_repo_contribution
-        // We normalise by dividing each score by repo_count and then capping below.
-        let decay = repo.age_decay;
-        let penalty = repo.negative_signal_penalty;
+        // Take top N (N = 3) repos
+        let top_n: Vec<RepoCapSignal> = contribs.into_iter().take(3).collect();
+        let effective_repo_count = top_n.len().max(1) as f32;
 
-        // 1. Keyword channel (from signal text matching)
-        let mut kw_by_cap: HashMap<String, f32> = HashMap::new();
-        for signal in &repo.keyword_signals {
-            let entry = kw_by_cap
-                .entry(signal.capability_type.0.clone())
-                .or_insert(0.0);
-            *entry = entry.max(signal.score); // take max within a repo
+        for contrib in top_n {
+            *cap_keyword.entry(cap_id.clone()).or_insert(0.0) += contrib.keyword / effective_repo_count;
+            *cap_dep.entry(cap_id.clone()).or_insert(0.0) += contrib.dependency / effective_repo_count;
+            *cap_filename.entry(cap_id.clone()).or_insert(0.0) += contrib.filename / effective_repo_count;
+            *cap_structure.entry(cap_id.clone()).or_insert(0.0) += contrib.structure / effective_repo_count;
+            *cap_language.entry(cap_id.clone()).or_insert(0.0) += contrib.language / effective_repo_count;
+            *cap_activity.entry(cap_id.clone()).or_insert(0.0) += contrib.activity / effective_repo_count;
+            *cap_negative_penalty.entry(cap_id.clone()).or_insert(0.0) += contrib.penalty / effective_repo_count;
+
             cap_keywords_evidence
-                .entry(signal.capability_type.0.clone())
+                .entry(cap_id.clone())
                 .or_default()
-                .extend(signal.keywords.iter().cloned());
-        }
-        for (id, score) in &kw_by_cap {
-            let capped = (score * decay).min(weights.max_repo_contribution);
-            *cap_keyword.entry(id.clone()).or_insert(0.0) += capped / repo_count;
+                .extend(contrib.evidence_keywords);
+            cap_deps_evidence
+                .entry(cap_id.clone())
+                .or_default()
+                .extend(contrib.evidence_deps);
             cap_repos_evidence
-                .entry(id.clone())
+                .entry(cap_id.clone())
                 .or_default()
-                .push(repo.name.clone());
-        }
-
-        // 2. Dependency channel
-        for (id, score) in &repo.dep_scores {
-            let capped = (score * decay).min(weights.max_repo_contribution);
-            *cap_dep.entry(id.clone()).or_insert(0.0) += capped / repo_count;
-            cap_repos_evidence
-                .entry(id.clone())
-                .or_default()
-                .push(repo.name.clone());
-            if let Some(deps) = repo.dep_evidence.get(id) {
-                cap_deps_evidence
-                    .entry(id.clone())
-                    .or_default()
-                    .extend(deps.iter().cloned());
-            }
-        }
-
-        // 3. Filename channel
-        for (id, score) in &repo.filename_scores {
-            let capped = (score * decay).min(weights.max_repo_contribution);
-            *cap_filename.entry(id.clone()).or_insert(0.0) += capped / repo_count;
-            cap_repos_evidence
-                .entry(id.clone())
-                .or_default()
-                .push(repo.name.clone());
-        }
-
-        // 4. Structure channel (composite-gated, already pre-gated in project_structure)
-        for (id, score) in &repo.structure_scores {
-            let capped = (score * decay).min(weights.max_repo_contribution);
-            *cap_structure.entry(id.clone()).or_insert(0.0) += capped / repo_count;
-            cap_repos_evidence
-                .entry(id.clone())
-                .or_default()
-                .push(repo.name.clone());
-        }
-
-        // 5. Language channel (amplify-only — applied AFTER raw_score is computed below)
-        for (id, score) in &repo.language_scores {
-            *cap_language.entry(id.clone()).or_insert(0.0) += score / repo_count;
-        }
-
-        // 6. Activity channel
-        for (id, score) in &repo.activity_scores {
-            *cap_activity.entry(id.clone()).or_insert(0.0) += score / repo_count;
-        }
-
-        // Deduplicated negative penalty application (once per repo per capability across the 4 penalized channels)
-        if penalty > 0.0 {
-            let mut repo_penalized_caps: HashSet<&str> = HashSet::new();
-            for id in kw_by_cap.keys() {
-                repo_penalized_caps.insert(id.as_str());
-            }
-            for id in repo.dep_scores.keys() {
-                repo_penalized_caps.insert(id.as_str());
-            }
-            for id in repo.filename_scores.keys() {
-                repo_penalized_caps.insert(id.as_str());
-            }
-            for id in repo.structure_scores.keys() {
-                repo_penalized_caps.insert(id.as_str());
-            }
-            for id in repo_penalized_caps {
-                *cap_negative_penalty.entry(id.to_string()).or_insert(0.0) += penalty / repo_count;
-            }
+                .push(contrib.repo_name);
         }
     }
 
@@ -295,8 +330,13 @@ pub fn aggregate_signals(
     for (cap_type, type_signals) in grouped {
         let keyword_score = safe_f32(calculate_keyword_score(&type_signals));
         let repo_score = safe_f32(calculate_repo_score(&type_signals, repos));
+        let evidence_keywords = collect_evidence_keywords(&type_signals);
+        let evidence_repos = collect_evidence_repos(&type_signals);
+        let active_repo_count = evidence_repos.len().min(3).max(1) as f32;
+
         let raw_score = safe_f32(
-            keyword_score * weights.channels.keyword + repo_score * weights.channels.filename,
+            (keyword_score * weights.channels.keyword + repo_score * weights.channels.filename)
+                / active_repo_count,
         );
 
         let sigmoid_confidence = apply_sigmoid(raw_score, weights.alpha, weights.beta);
@@ -309,8 +349,6 @@ pub fn aggregate_signals(
         ));
 
         if normalized_confidence >= config.min_confidence {
-            let evidence_keywords = collect_evidence_keywords(&type_signals);
-            let evidence_repos = collect_evidence_repos(&type_signals);
             let tier = CapabilityTier::from_confidence(normalized_confidence);
 
             capabilities.push(ExtractedCapability::new(
@@ -795,6 +833,198 @@ pub mod tests {
             actual_raw_diff
         );
     }
+
+    #[test]
+    pub fn test_cross_repo_aggregation_does_not_dilute_unrelated_repos() {
+        let strong_repo = RepoSignals {
+            name: "strong-ml-project".to_string(),
+            language: Some("Python".to_string()),
+            stars: 20,
+            keyword_signals: Vec::new(),
+            dep_scores: HashMap::from([("MachineLearning".to_string(), 0.8)]),
+            dep_evidence: HashMap::new(),
+            filename_scores: HashMap::new(),
+            structure_scores: HashMap::new(),
+            language_scores: HashMap::new(),
+            activity_scores: HashMap::new(),
+            negative_signal_penalty: 0.0,
+            age_decay: 1.0,
+            commit_count: 50,
+        };
+
+        // 10 unrelated repos with zero signals for MachineLearning
+        let mut repos = vec![strong_repo.clone()];
+        for i in 1..=10 {
+            repos.push(RepoSignals {
+                name: format!("unrelated-practice-repo-{}", i),
+                language: Some("HTML".to_string()),
+                stars: 0,
+                keyword_signals: Vec::new(),
+                dep_scores: HashMap::new(),
+                dep_evidence: HashMap::new(),
+                filename_scores: HashMap::new(),
+                structure_scores: HashMap::new(),
+                language_scores: HashMap::new(),
+                activity_scores: HashMap::new(),
+                negative_signal_penalty: 0.0,
+                age_decay: 1.0,
+                commit_count: 1,
+            });
+        }
+
+        let weights = ScoringWeights::default();
+        let cap_ids = vec!["MachineLearning"];
+
+        let single_repo_caps = aggregate_all_signals(
+            "test_user".to_string(),
+            vec![strong_repo],
+            100,
+            &weights,
+            &cap_ids,
+            0.0,
+        );
+
+        let multi_repo_caps = aggregate_all_signals(
+            "test_user".to_string(),
+            repos,
+            100,
+            &weights,
+            &cap_ids,
+            0.0,
+        );
+
+        let single_ml = single_repo_caps.first().expect("ML cap in single repo");
+        let multi_ml = multi_repo_caps.first().expect("ML cap in multi repo");
+
+        assert!(
+            (single_ml.signal_breakdown.dependency_score - multi_ml.signal_breakdown.dependency_score).abs() < 1e-4,
+            "10 unrelated repos should not dilute single strong repo dependency score (single {}, multi {})",
+            single_ml.signal_breakdown.dependency_score,
+            multi_ml.signal_breakdown.dependency_score
+        );
+        assert_eq!(multi_ml.evidence_repos, vec!["strong-ml-project".to_string()]);
+    }
+
+    #[test]
+    pub fn test_top_n_repo_capping() {
+        // 5 repos with signals for MachineLearning
+        let mut repos = Vec::new();
+        for i in 1..=5 {
+            let score = 0.9 - (i as f32 * 0.1); // 0.8, 0.7, 0.6, 0.5, 0.4
+            repos.push(RepoSignals {
+                name: format!("ml-repo-{}", i),
+                language: Some("Python".to_string()),
+                stars: 5,
+                keyword_signals: Vec::new(),
+                dep_scores: HashMap::from([("MachineLearning".to_string(), score)]),
+                dep_evidence: HashMap::new(),
+                filename_scores: HashMap::new(),
+                structure_scores: HashMap::new(),
+                language_scores: HashMap::new(),
+                activity_scores: HashMap::new(),
+                negative_signal_penalty: 0.0,
+                age_decay: 1.0,
+                commit_count: 10,
+            });
+        }
+
+        let weights = ScoringWeights::default();
+        let cap_ids = vec!["MachineLearning"];
+
+        let caps = aggregate_all_signals(
+            "test_user".to_string(),
+            repos,
+            50,
+            &weights,
+            &cap_ids,
+            0.0,
+        );
+
+        let ml_cap = caps.first().expect("ML capability should be extracted");
+
+        // Top 3 capped scores (0.35 max_repo_contribution limit applies to 0.8, 0.7, 0.6):
+        // 0.35 + 0.35 + 0.35 = 1.05 / 3 = 0.35
+        assert!(
+            (ml_cap.signal_breakdown.dependency_score - 0.35).abs() < 1e-4,
+            "Top-N dependency score should be 0.35, got {}",
+            ml_cap.signal_breakdown.dependency_score
+        );
+        assert_eq!(ml_cap.evidence_repos.len(), 3, "evidence_repos should contain exactly top 3 repos");
+    }
+
+    #[test]
+    pub fn test_top_n_divergent_channels_option_a() {
+        // Repo A: Strong dependency score, zero keyword score
+        let repo_a = RepoSignals {
+            name: "repo-a-deps".to_string(),
+            language: Some("Rust".to_string()),
+            stars: 5,
+            keyword_signals: Vec::new(),
+            dep_scores: HashMap::from([("MachineLearning".to_string(), 0.8)]),
+            dep_evidence: HashMap::new(),
+            filename_scores: HashMap::new(),
+            structure_scores: HashMap::new(),
+            language_scores: HashMap::new(),
+            activity_scores: HashMap::new(),
+            negative_signal_penalty: 0.0,
+            age_decay: 1.0,
+            commit_count: 5,
+        };
+
+        // Repo B: Strong keyword score, zero dependency score
+        let mut repo_b = RepoSignals {
+            name: "repo-b-kw".to_string(),
+            language: Some("Rust".to_string()),
+            stars: 5,
+            keyword_signals: Vec::new(),
+            dep_scores: HashMap::new(),
+            dep_evidence: HashMap::new(),
+            filename_scores: HashMap::new(),
+            structure_scores: HashMap::new(),
+            language_scores: HashMap::new(),
+            activity_scores: HashMap::new(),
+            negative_signal_penalty: 0.0,
+            age_decay: 1.0,
+            commit_count: 5,
+        };
+        repo_b.keyword_signals.push(Signal {
+            capability_type: CapabilityType::new("MachineLearning"),
+            score: 0.8,
+            keywords: vec!["pytorch".to_string()],
+            source: SignalSource::RepoName("repo-b-kw".to_string()),
+            tier: super::super::models::SignalTier::Tier1,
+            timestamp: 0,
+        });
+
+        let weights = ScoringWeights::default();
+        let cap_ids = vec!["MachineLearning"];
+
+        let caps = aggregate_all_signals(
+            "test_user".to_string(),
+            vec![repo_a, repo_b],
+            10,
+            &weights,
+            &cap_ids,
+            0.0,
+        );
+
+        let ml_cap = caps.first().expect("ML capability should be extracted");
+
+        // Both repos have signal for ML, so effective_repo_count = 2.
+        // Capped kw from repo_b = 0.35, capped dep from repo_a = 0.35.
+        // Option A holistic averaging over 2 repos: kw = 0.35 / 2 = 0.175, dep = 0.35 / 2 = 0.175.
+        assert!(
+            (ml_cap.signal_breakdown.keyword_score - 0.175).abs() < 1e-4,
+            "Option A keyword score should be 0.175, got {}",
+            ml_cap.signal_breakdown.keyword_score
+        );
+        assert!(
+            (ml_cap.signal_breakdown.dependency_score - 0.175).abs() < 1e-4,
+            "Option A dependency score should be 0.175, got {}",
+            ml_cap.signal_breakdown.dependency_score
+        );
+    }
 }
+
 
 
