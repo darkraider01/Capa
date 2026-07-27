@@ -19,6 +19,45 @@ mod evaluation;
 use anyhow::Result;
 use sqlx::postgres::PgPoolOptions;
 
+async fn derive_user_experience_tier(
+    pool: &sqlx::PgPool,
+    username: &str,
+) -> crate::calibration::ExperienceTier {
+    use sqlx::Row;
+    let repo_stats = sqlx::query(
+        "SELECT COUNT(*) as repo_count, COALESCE(SUM(stars), 0) as star_count FROM repositories WHERE user_login = $1",
+    )
+    .bind(username)
+    .fetch_one(pool)
+    .await;
+
+    let commit_stats = sqlx::query(
+        "SELECT COALESCE(SUM(commit_count), 0) as commit_count FROM repositories WHERE user_login = $1",
+    )
+    .bind(username)
+    .fetch_one(pool)
+    .await;
+
+    let (repos, stars) = match repo_stats {
+        Ok(row) => {
+            let r: i64 = row.get("repo_count");
+            let s: i64 = row.get("star_count");
+            (r as usize, s as usize)
+        }
+        Err(_) => (0, 0),
+    };
+
+    let commits = match commit_stats {
+        Ok(row) => {
+            let c: i64 = row.get("commit_count");
+            c as usize
+        }
+        Err(_) => 0,
+    };
+
+    crate::calibration::ExperienceTier::derive_from_profile(commits, repos, stars)
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     // Load environment variables from .env file (overriding stale process env)
@@ -550,10 +589,13 @@ async fn main() -> Result<()> {
                     println!("✅ Ingestion complete. Extracting capabilities...");
                     match extraction::extract_user_capabilities_full(&pool, &github_client, &target, &registry).await {
                         Ok(mut capabilities) => {
+                            let cohort = derive_user_experience_tier(&pool, &target).await;
                             for cap in &mut capabilities {
-                                cap.normalized_score = calibration::calibrate_score(
+                                cap.experience_tier = Some(cohort);
+                                cap.normalized_score = calibration::calibrate_score_for_cohort(
                                     cap.confidence,
                                     cap.capability_type.as_str(),
+                                    Some(cohort),
                                     &search_config,
                                 );
                                 cap.tier = extraction::config::CapabilityTier::from_confidence(cap.normalized_score);
@@ -585,21 +627,42 @@ async fn main() -> Result<()> {
             return Ok(());
         }
 
-        // Group scores by capability type
-        let mut scores_by_type: std::collections::HashMap<String, Vec<f32>> =
+        // Group scores by capability type and cohort key
+        let mut scores_by_key: std::collections::HashMap<String, Vec<f32>> =
             std::collections::HashMap::new();
+
+        // Cache user experience tiers to avoid duplicate queries
+        let mut user_tiers: std::collections::HashMap<String, crate::calibration::ExperienceTier> =
+            std::collections::HashMap::new();
+
         for cap in &all_caps {
-            scores_by_type
+            // Global key
+            scores_by_key
                 .entry(cap.capability_type.0.clone())
+                .or_default()
+                .push(cap.confidence);
+
+            // Cohort-qualified key
+            let tier = if let Some(t) = user_tiers.get(&cap.user_login) {
+                *t
+            } else {
+                let t = derive_user_experience_tier(&pool, &cap.user_login).await;
+                user_tiers.insert(cap.user_login.clone(), t);
+                t
+            };
+
+            let cohort_key = format!("{}::{}", cap.capability_type.0, tier.as_str());
+            scores_by_key
+                .entry(cohort_key)
                 .or_default()
                 .push(cap.confidence);
         }
 
-        // Compute mean and std_dev per capability (with 0.08 floor)
+        // Compute mean and std_dev per key (with 0.08 floor)
         let mut new_stats: std::collections::HashMap<String, crate::config::TypeStats> =
             std::collections::HashMap::new();
 
-        for (cap_type, scores) in &scores_by_type {
+        for (key, scores) in &scores_by_key {
             let n = scores.len() as f32;
             let mean = scores.iter().sum::<f32>() / n;
             let variance = scores.iter().map(|s| (s - mean).powi(2)).sum::<f32>() / n;
@@ -607,14 +670,14 @@ async fn main() -> Result<()> {
 
             println!(
                 "  {} | n={} | mean={:.3} | std_dev={:.3}",
-                cap_type,
+                key,
                 scores.len(),
                 mean,
                 std_dev
             );
 
             new_stats.insert(
-                cap_type.clone(),
+                key.clone(),
                 crate::config::TypeStats {
                     mean,
                     std_dev,
@@ -633,17 +696,24 @@ async fn main() -> Result<()> {
         std::fs::write("config/search.toml", toml_str)?;
 
         println!(
-            "\n✅ Calibration complete! Updated {} capability stats in config/search.toml.",
-            scores_by_type.len()
+            "\n✅ Calibration complete! Updated {} capability & cohort stats in config/search.toml.",
+            scores_by_key.len()
         );
 
         // Recompute normalized scores and tiers for all capabilities in the DB
         println!("🔄 Applying new calibration to existing capabilities...");
         let mut caps_by_user: std::collections::HashMap<String, Vec<extraction::models::ExtractedCapability>> = std::collections::HashMap::new();
         for mut cap in all_caps {
-            cap.normalized_score = calibration::calibrate_score(
+            let tier = if let Some(t) = user_tiers.get(&cap.user_login) {
+                *t
+            } else {
+                derive_user_experience_tier(&pool, &cap.user_login).await
+            };
+            cap.experience_tier = Some(tier);
+            cap.normalized_score = calibration::calibrate_score_for_cohort(
                 cap.confidence,
                 cap.capability_type.as_str(),
+                Some(tier),
                 &updated_config,
             );
             cap.tier = extraction::config::CapabilityTier::from_confidence(cap.normalized_score);
@@ -940,10 +1010,13 @@ async fn main() -> Result<()> {
     let mut capabilities = extraction::extract_user_capabilities(&pool, &target_username).await?;
 
     // Apply score calibration
+    let cohort = derive_user_experience_tier(&pool, &target_username).await;
     for cap in &mut capabilities {
-        cap.normalized_score = calibration::calibrate_score(
+        cap.experience_tier = Some(cohort);
+        cap.normalized_score = calibration::calibrate_score_for_cohort(
             cap.confidence,
             cap.capability_type.as_str(),
+            Some(cohort),
             &search_config,
         );
         cap.tier = extraction::config::CapabilityTier::from_confidence(cap.normalized_score);

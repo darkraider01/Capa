@@ -118,10 +118,42 @@ pub async fn extract_multiple_capabilities(
                 total_capabilities += count;
 
                 // Apply score calibration
+                let repo_stats = sqlx::query(
+                    "SELECT COUNT(*) as repo_count, COALESCE(SUM(stars), 0) as star_count FROM repositories WHERE user_login = $1",
+                )
+                .bind(username)
+                .fetch_one(pool)
+                .await;
+                let commit_stats = sqlx::query(
+                    "SELECT COALESCE(SUM(commit_count), 0) as commit_count FROM repositories WHERE user_login = $1",
+                )
+                .bind(username)
+                .fetch_one(pool)
+                .await;
+                use sqlx::Row;
+                let (repos, stars) = match repo_stats {
+                    Ok(row) => {
+                        let r: i64 = row.get("repo_count");
+                        let s: i64 = row.get("star_count");
+                        (r as usize, s as usize)
+                    }
+                    Err(_) => (0, 0),
+                };
+                let commits = match commit_stats {
+                    Ok(row) => {
+                        let c: i64 = row.get("commit_count");
+                        c as usize
+                    }
+                    Err(_) => 0,
+                };
+                let cohort = crate::calibration::ExperienceTier::derive_from_profile(commits, repos, stars);
+
                 for cap in &mut capabilities {
-                    cap.normalized_score = crate::calibration::calibrate_score(
+                    cap.experience_tier = Some(cohort);
+                    cap.normalized_score = crate::calibration::calibrate_score_for_cohort(
                         cap.confidence,
                         cap.capability_type.as_str(),
+                        Some(cohort),
                         config,
                     );
                     cap.tier = crate::extraction::config::CapabilityTier::from_confidence(cap.normalized_score);

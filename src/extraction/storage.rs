@@ -168,6 +168,7 @@ pub async fn load_all_capabilities(pool: &PgPool) -> Result<Vec<ExtractedCapabil
             confidence,
             normalized_score,
             tier,
+            experience_tier: None,
             evidence_keywords,
             evidence_repos,
             evidence_deps: Vec::new(),

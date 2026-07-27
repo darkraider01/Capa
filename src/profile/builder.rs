@@ -13,6 +13,7 @@ pub struct CapabilitySummary {
     pub capability_type: String,
     pub normalized_score: f32,
     pub tier: String,
+    pub experience_tier: String,
     pub evidence_repos: Vec<String>,
     pub evidence_keywords: Vec<String>,
 }
@@ -62,6 +63,7 @@ pub async fn build_profile(pool: &PgPool, username: &str) -> Result<CapabilityPr
             capability_type,
             normalized_score: normalized_score as f32,
             tier,
+            experience_tier: String::new(),
             evidence_repos,
             evidence_keywords,
         });

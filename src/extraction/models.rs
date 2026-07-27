@@ -1,3 +1,4 @@
+use crate::calibration::ExperienceTier;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -104,6 +105,7 @@ pub struct ExtractedCapability {
     pub confidence: f32,
     pub normalized_score: f32,
     pub tier: super::config::CapabilityTier,
+    pub experience_tier: Option<ExperienceTier>,
     pub signal_breakdown: SignalBreakdown,
     pub evidence_keywords: Vec<String>,
     pub evidence_repos: Vec<String>,
@@ -128,6 +130,7 @@ impl ExtractedCapability {
             confidence: confidence.clamp(0.0, 1.0),
             normalized_score: 0.0,
             tier,
+            experience_tier: None,
             signal_breakdown,
             evidence_keywords,
             evidence_repos,
