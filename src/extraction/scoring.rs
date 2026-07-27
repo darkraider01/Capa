@@ -1024,7 +1024,120 @@ pub mod tests {
             ml_cap.signal_breakdown.dependency_score
         );
     }
+
+    #[test]
+    pub fn test_sigmoid_tier_crossovers() {
+        let weights = ScoringWeights::default();
+        // Crossovers under alpha=3.5, beta=0.25:
+        // C=0.28 (Emerging threshold): raw = 0.050
+        // C=0.38 (Strong threshold): raw = 0.110
+        // C=0.50 (Proven threshold): raw = 0.250
+
+        let conf_emerging = apply_sigmoid(0.050, weights.alpha, weights.beta);
+        let conf_strong = apply_sigmoid(0.111, weights.alpha, weights.beta);
+        let conf_proven = apply_sigmoid(0.250, weights.alpha, weights.beta);
+
+        assert!(conf_emerging >= 0.28, "0.050 raw score should cross Emerging threshold (0.28), got {}", conf_emerging);
+        assert_eq!(CapabilityTier::from_confidence(conf_emerging), CapabilityTier::Emerging);
+
+        assert!(conf_strong >= 0.38, "0.111 raw score should cross Strong threshold (0.38), got {}", conf_strong);
+        assert_eq!(CapabilityTier::from_confidence(conf_strong), CapabilityTier::Strong);
+
+        assert!(conf_proven >= 0.50, "0.250 raw score should cross Proven threshold (0.50), got {}", conf_proven);
+        assert_eq!(CapabilityTier::from_confidence(conf_proven), CapabilityTier::Proven);
+    }
+
+    #[test]
+    pub fn test_entry_level_raw_score_smooth_progression() {
+        let weights = ScoringWeights::default();
+        // Entry-level raw score range: 0.10 to 0.20
+        let conf_10 = apply_sigmoid(0.10, weights.alpha, weights.beta);
+        let conf_20 = apply_sigmoid(0.20, weights.alpha, weights.beta);
+
+        // Smooth progression without cliff edge: ~0.371 to ~0.456
+        assert!((conf_10 - 0.3716).abs() < 1e-3, "0.10 raw score confidence expected ~0.371, got {}", conf_10);
+        assert!((conf_20 - 0.4563).abs() < 1e-3, "0.20 raw score confidence expected ~0.456, got {}", conf_20);
+
+        // Smooth tier progression (Emerging to Strong) without spurious Proven inflation
+        assert_eq!(CapabilityTier::from_confidence(conf_10), CapabilityTier::Emerging);
+        assert_eq!(CapabilityTier::from_confidence(conf_20), CapabilityTier::Strong);
+    }
+
+    #[test]
+    pub fn test_flagship_senior_repo_reaches_proven() {
+        // High-quality flagship project with multi-channel signals, language boost, and correlation boost
+        let mut flagship1 = RepoSignals {
+            name: "flagship-distributed-db".to_string(),
+            language: Some("Rust".to_string()),
+            stars: 500,
+            keyword_signals: Vec::new(),
+            dep_scores: HashMap::from([
+                ("DistributedSystems".to_string(), 0.8),
+                ("DatabaseStorageEngines".to_string(), 0.8),
+            ]),
+            dep_evidence: HashMap::new(),
+            filename_scores: HashMap::from([
+                ("DistributedSystems".to_string(), 0.8),
+                ("DatabaseStorageEngines".to_string(), 0.8),
+            ]),
+            structure_scores: HashMap::from([
+                ("DistributedSystems".to_string(), 0.8),
+                ("DatabaseStorageEngines".to_string(), 0.8),
+            ]),
+            language_scores: HashMap::from([
+                ("DistributedSystems".to_string(), 1.0),
+                ("DatabaseStorageEngines".to_string(), 1.0),
+            ]),
+            activity_scores: HashMap::from([
+                ("DistributedSystems".to_string(), 0.5),
+                ("DatabaseStorageEngines".to_string(), 0.5),
+            ]),
+            negative_signal_penalty: 0.0,
+            age_decay: 1.0,
+            commit_count: 500,
+        };
+        flagship1.keyword_signals.push(Signal {
+            capability_type: CapabilityType::new("DistributedSystems"),
+            score: 0.8,
+            keywords: vec!["raft".to_string(), "consensus".to_string()],
+            source: SignalSource::RepoName("flagship-distributed-db".to_string()),
+            tier: super::super::models::SignalTier::Tier1,
+            timestamp: 0,
+        });
+
+        let mut flagship2 = flagship1.clone();
+        flagship2.name = "flagship-kv-engine".to_string();
+
+        let weights = ScoringWeights::default();
+        let cap_ids = vec!["DistributedSystems", "DatabaseStorageEngines"];
+
+        let caps = aggregate_all_signals(
+            "senior_dev".to_string(),
+            vec![flagship1, flagship2],
+            1000,
+            &weights,
+            &cap_ids,
+            0.0,
+        );
+
+        let dist_cap = caps
+            .iter()
+            .find(|c| c.capability_type.as_str() == "DistributedSystems")
+            .expect("DistributedSystems should be extracted");
+
+        assert!(
+            dist_cap.signal_breakdown.raw_score >= 0.250,
+            "Flagship senior raw score ({}) should cross 0.250 to reach Proven",
+            dist_cap.signal_breakdown.raw_score
+        );
+        assert_eq!(
+            dist_cap.tier,
+            CapabilityTier::Proven,
+            "Flagship senior project should achieve Proven tier"
+        );
+    }
 }
+
 
 
 

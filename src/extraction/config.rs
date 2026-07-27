@@ -74,11 +74,19 @@ pub struct ScoringWeights {
     pub channels: ChannelWeights,
 }
 
+impl ScoringWeights {
+    /// Derive empirical beta from population median (scaffolding for future cohort calibration).
+    /// Clamped to [0.15, 0.40].
+    pub fn derive_beta(&self, population_median: Option<f32>) -> f32 {
+        population_median.unwrap_or(self.beta).clamp(0.15, 0.40)
+    }
+}
+
 impl Default for ScoringWeights {
     fn default() -> Self {
         Self {
-            alpha: 5.0,
-            beta: 0.35,
+            alpha: 3.5,
+            beta: 0.25,
             density_scaling_factor: 3.0,
             age_decay_lambda: 0.3,
             normalization_factor: 0.01,
@@ -92,19 +100,19 @@ impl Default for ScoringWeights {
 /// Capability strength tier classification
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CapabilityTier {
-    Weak,     // 0.0–0.1
-    Emerging, // 0.1–0.2
-    Strong,   // 0.2–0.3
-    Proven,   // >= 0.3
+    Weak,     // < 0.28
+    Emerging, // 0.28–0.38
+    Strong,   // 0.38–0.50
+    Proven,   // >= 0.50
 }
 
 impl CapabilityTier {
     pub fn from_confidence(confidence: f32) -> Self {
-        if confidence >= 0.3 {
+        if confidence >= 0.50 {
             CapabilityTier::Proven
-        } else if confidence >= 0.2 {
+        } else if confidence >= 0.38 {
             CapabilityTier::Strong
-        } else if confidence >= 0.1 {
+        } else if confidence >= 0.28 {
             CapabilityTier::Emerging
         } else {
             CapabilityTier::Weak
