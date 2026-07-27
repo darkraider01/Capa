@@ -718,8 +718,8 @@ pub mod tests {
             keyword_signals: Vec::new(),
             dep_scores: HashMap::from([("MachineLearning".to_string(), 0.8)]),
             dep_evidence: HashMap::new(),
-            filename_scores: HashMap::new(),
-            structure_scores: HashMap::new(),
+            filename_scores: HashMap::from([("MachineLearning".to_string(), 0.8)]),
+            structure_scores: HashMap::from([("MachineLearning".to_string(), 0.8)]),
             language_scores: HashMap::new(),
             activity_scores: HashMap::new(),
             negative_signal_penalty: 0.25,
@@ -734,8 +734,8 @@ pub mod tests {
             keyword_signals: Vec::new(),
             dep_scores: HashMap::from([("MachineLearning".to_string(), 0.8)]),
             dep_evidence: HashMap::new(),
-            filename_scores: HashMap::new(),
-            structure_scores: HashMap::new(),
+            filename_scores: HashMap::from([("MachineLearning".to_string(), 0.8)]),
+            structure_scores: HashMap::from([("MachineLearning".to_string(), 0.8)]),
             language_scores: HashMap::new(),
             activity_scores: HashMap::new(),
             negative_signal_penalty: 0.25,
@@ -758,15 +758,15 @@ pub mod tests {
         let cap = caps.first().expect("Capability should be extracted");
 
         // Control case: both repos without negative penalty
-        let mut repo1_clean = RepoSignals {
+        let repo1_clean = RepoSignals {
             name: "penalized-repo-1".to_string(),
             language: Some("Rust".to_string()),
             stars: 5,
             keyword_signals: Vec::new(),
             dep_scores: HashMap::from([("MachineLearning".to_string(), 0.8)]),
             dep_evidence: HashMap::new(),
-            filename_scores: HashMap::new(),
-            structure_scores: HashMap::new(),
+            filename_scores: HashMap::from([("MachineLearning".to_string(), 0.8)]),
+            structure_scores: HashMap::from([("MachineLearning".to_string(), 0.8)]),
             language_scores: HashMap::new(),
             activity_scores: HashMap::new(),
             negative_signal_penalty: 0.0,
