@@ -1026,24 +1026,37 @@ pub mod tests {
     }
 
     #[test]
+    pub fn test_raw_score_zero_lands_in_weak_tier() {
+        let weights = ScoringWeights::default();
+        // At raw score 0.0, sigmoid confidence is 1 / (1 + e^(4.0 * 0.25)) = 0.2689 < 0.300 (Weak)
+        let conf_zero = apply_sigmoid(0.0, weights.alpha, weights.beta);
+        assert!(conf_zero < 0.300, "Raw score 0.0 confidence must be < 0.300, got {}", conf_zero);
+        assert_eq!(
+            CapabilityTier::from_confidence(conf_zero),
+            CapabilityTier::Weak,
+            "Raw score 0.0 floor must land in Weak tier"
+        );
+    }
+
+    #[test]
     pub fn test_sigmoid_tier_crossovers() {
         let weights = ScoringWeights::default();
-        // Crossovers under alpha=3.5, beta=0.25:
-        // C=0.28 (Emerging threshold): raw = 0.050
-        // C=0.38 (Strong threshold): raw = 0.110
-        // C=0.50 (Proven threshold): raw = 0.250
+        // Crossovers under alpha=4.0, beta=0.25:
+        // C=0.300 (Emerging threshold): raw = 0.039
+        // C=0.400 (Strong threshold): raw = 0.149
+        // C=0.500 (Proven threshold): raw = 0.250
 
-        let conf_emerging = apply_sigmoid(0.050, weights.alpha, weights.beta);
-        let conf_strong = apply_sigmoid(0.111, weights.alpha, weights.beta);
+        let conf_emerging = apply_sigmoid(0.039, weights.alpha, weights.beta);
+        let conf_strong = apply_sigmoid(0.149, weights.alpha, weights.beta);
         let conf_proven = apply_sigmoid(0.250, weights.alpha, weights.beta);
 
-        assert!(conf_emerging >= 0.28, "0.050 raw score should cross Emerging threshold (0.28), got {}", conf_emerging);
+        assert!(conf_emerging >= 0.300, "0.039 raw score should cross Emerging threshold (0.300), got {}", conf_emerging);
         assert_eq!(CapabilityTier::from_confidence(conf_emerging), CapabilityTier::Emerging);
 
-        assert!(conf_strong >= 0.38, "0.111 raw score should cross Strong threshold (0.38), got {}", conf_strong);
+        assert!(conf_strong >= 0.400, "0.149 raw score should cross Strong threshold (0.400), got {}", conf_strong);
         assert_eq!(CapabilityTier::from_confidence(conf_strong), CapabilityTier::Strong);
 
-        assert!(conf_proven >= 0.50, "0.250 raw score should cross Proven threshold (0.50), got {}", conf_proven);
+        assert!(conf_proven >= 0.500, "0.250 raw score should cross Proven threshold (0.500), got {}", conf_proven);
         assert_eq!(CapabilityTier::from_confidence(conf_proven), CapabilityTier::Proven);
     }
 
@@ -1054,9 +1067,9 @@ pub mod tests {
         let conf_10 = apply_sigmoid(0.10, weights.alpha, weights.beta);
         let conf_20 = apply_sigmoid(0.20, weights.alpha, weights.beta);
 
-        // Smooth progression without cliff edge: ~0.371 to ~0.456
-        assert!((conf_10 - 0.3716).abs() < 1e-3, "0.10 raw score confidence expected ~0.371, got {}", conf_10);
-        assert!((conf_20 - 0.4563).abs() < 1e-3, "0.20 raw score confidence expected ~0.456, got {}", conf_20);
+        // Smooth progression without cliff edge: ~0.354 to ~0.450
+        assert!((conf_10 - 0.3543).abs() < 1e-3, "0.10 raw score confidence expected ~0.354, got {}", conf_10);
+        assert!((conf_20 - 0.4502).abs() < 1e-3, "0.20 raw score confidence expected ~0.450, got {}", conf_20);
 
         // Smooth tier progression (Emerging to Strong) without spurious Proven inflation
         assert_eq!(CapabilityTier::from_confidence(conf_10), CapabilityTier::Emerging);

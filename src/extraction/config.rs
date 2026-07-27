@@ -85,7 +85,7 @@ impl ScoringWeights {
 impl Default for ScoringWeights {
     fn default() -> Self {
         Self {
-            alpha: 3.5,
+            alpha: 4.0,
             beta: 0.25,
             density_scaling_factor: 3.0,
             age_decay_lambda: 0.3,
@@ -100,9 +100,9 @@ impl Default for ScoringWeights {
 /// Capability strength tier classification
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CapabilityTier {
-    Weak,     // < 0.28
-    Emerging, // 0.28–0.38
-    Strong,   // 0.38–0.50
+    Weak,     // < 0.30
+    Emerging, // 0.30–0.40
+    Strong,   // 0.40–0.50
     Proven,   // >= 0.50
 }
 
@@ -110,9 +110,9 @@ impl CapabilityTier {
     pub fn from_confidence(confidence: f32) -> Self {
         if confidence >= 0.50 {
             CapabilityTier::Proven
-        } else if confidence >= 0.38 {
+        } else if confidence >= 0.40 {
             CapabilityTier::Strong
-        } else if confidence >= 0.28 {
+        } else if confidence >= 0.30 {
             CapabilityTier::Emerging
         } else {
             CapabilityTier::Weak
