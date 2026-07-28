@@ -6,6 +6,64 @@ document.addEventListener('DOMContentLoaded', () => {
     const runBtn = document.getElementById('run-btn');
     const terminalOutput = document.getElementById('terminal-output');
     const loadingOverlay = document.getElementById('loading-overlay');
+    const terminalContainer = document.querySelector('.terminal-container');
+    const resizeHandle = document.getElementById('terminal-resize-handle');
+
+    // Terminal Resizing & Height Persistence
+    const MIN_TERMINAL_HEIGHT = 150;
+    const MAX_TERMINAL_HEIGHT = 600;
+    const STORAGE_KEY = 'capa_terminal_height';
+
+    // Restore saved height on load with strict clamp
+    const savedHeight = parseInt(localStorage.getItem(STORAGE_KEY), 10);
+    if (!isNaN(savedHeight) && terminalContainer) {
+        const clampedHeight = Math.min(Math.max(savedHeight, MIN_TERMINAL_HEIGHT), MAX_TERMINAL_HEIGHT);
+        terminalContainer.style.height = `${clampedHeight}px`;
+    }
+
+    let isResizing = false;
+    let startY = 0;
+    let startHeight = 0;
+
+    const startResize = (e) => {
+        isResizing = true;
+        startY = e.clientY || (e.touches && e.touches[0].clientY);
+        startHeight = terminalContainer.getBoundingClientRect().height;
+        if (resizeHandle) resizeHandle.classList.add('resizing');
+        document.body.style.cursor = 'ns-resize';
+        document.body.style.userSelect = 'none';
+    };
+
+    const doResize = (e) => {
+        if (!isResizing || !terminalContainer) return;
+        const currentY = e.clientY || (e.touches && e.touches[0].clientY);
+        // Dragging UP increases height (since terminal is anchored at bottom of content area)
+        const dy = startY - currentY;
+        const newHeight = Math.min(Math.max(startHeight + dy, MIN_TERMINAL_HEIGHT), MAX_TERMINAL_HEIGHT);
+        terminalContainer.style.height = `${newHeight}px`;
+    };
+
+    const stopResize = () => {
+        if (!isResizing) return;
+        isResizing = false;
+        if (resizeHandle) resizeHandle.classList.remove('resizing');
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+        if (terminalContainer) {
+            const currentHeight = terminalContainer.getBoundingClientRect().height;
+            const clampedHeight = Math.min(Math.max(currentHeight, MIN_TERMINAL_HEIGHT), MAX_TERMINAL_HEIGHT);
+            localStorage.setItem(STORAGE_KEY, clampedHeight.toString());
+        }
+    };
+
+    if (resizeHandle) {
+        resizeHandle.addEventListener('mousedown', startResize);
+        resizeHandle.addEventListener('touchstart', startResize, { passive: true });
+        window.addEventListener('mousemove', doResize);
+        window.addEventListener('touchmove', doResize, { passive: true });
+        window.addEventListener('mouseup', stopResize);
+        window.addEventListener('touchend', stopResize);
+    }
 
     // Input Groups
     const groupUsername = document.getElementById('group-username');

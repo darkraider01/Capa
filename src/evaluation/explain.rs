@@ -10,7 +10,7 @@ pub async fn explain_user(pool: &PgPool, username: &str, _gh: &GithubClient, jso
         println!("================================================");
     }
 
-    // Fetch capabilities
+    // Fetch capabilities including evidence_repos
     let query = "
         SELECT 
             capability_type,
@@ -21,7 +21,8 @@ pub async fn explain_user(pool: &PgPool, username: &str, _gh: &GithubClient, jso
             COALESCE(dependency_score, 0.0) as dependency_score,
             COALESCE(activity_score, 0.0) as activity_score,
             COALESCE(raw_score, 0.0) as raw_score,
-            confidence as final_score
+            confidence as final_score,
+            evidence_repos
         FROM capabilities
         WHERE user_login = $1
         ORDER BY confidence DESC
@@ -42,19 +43,34 @@ pub async fn explain_user(pool: &PgPool, username: &str, _gh: &GithubClient, jso
     }
 
     let mut caps_map: HashMap<String, f64> = HashMap::new();
-    let evidence_list: Vec<String> = Vec::new(); // In a real scenario, we'd query evidence logs
+    let mut projects_map: HashMap<String, HashMap<String, f64>> = HashMap::new();
+    let evidence_list: Vec<String> = Vec::new();
 
     for row in &rows {
         let cap_type: String = row.get("capability_type");
         let final_score: f64 = row.get("final_score");
-        caps_map.insert(cap_type, final_score);
+        caps_map.insert(cap_type.clone(), final_score);
+
+        // Parse evidence_repos JSONB array to map capabilities to individual projects
+        let repos_json: Option<serde_json::Value> = row.try_get("evidence_repos").ok();
+        if let Some(serde_json::Value::Array(repo_arr)) = repos_json {
+            for repo_val in repo_arr {
+                if let Some(repo_name) = repo_val.as_str() {
+                    projects_map
+                        .entry(repo_name.to_string())
+                        .or_default()
+                        .insert(cap_type.clone(), final_score);
+                }
+            }
+        }
     }
 
     if json_mode {
-        // Output strict JSON for Python LLM to ingest
+        // Output strict JSON for Python LLM to ingest with per-project vectors
         let payload = json!({
             "target": username,
             "capabilities": caps_map,
+            "projects": projects_map,
             "evidence": evidence_list,
         });
         println!("{}", serde_json::to_string(&payload)?);

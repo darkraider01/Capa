@@ -11,6 +11,8 @@
   --text-muted: #94a3b8;
   --terminal-bg: #1e1e2e;
   --success: #10b981;
+  --terminal-min-height: 150px;
+  --terminal-max-height: 600px;
 }
 
 * {
@@ -324,7 +326,9 @@ textarea {
 
 /* Terminal Area */
 .terminal-container {
-  flex-grow: 1;
+  min-height: var(--terminal-min-height);
+  max-height: var(--terminal-max-height);
+  height: 250px;
   background: var(--terminal-bg);
   border-radius: 12px;
   border: 1px solid #2e2e3e;
@@ -332,6 +336,35 @@ textarea {
   flex-direction: column;
   overflow: hidden;
   position: relative;
+  transition: border-color 0.2s;
+}
+
+.terminal-resize-handle {
+  height: 8px;
+  width: 100%;
+  background: rgba(255, 255, 255, 0.05);
+  cursor: ns-resize;
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 20;
+  transition: background 0.2s;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.terminal-resize-handle:hover,
+.terminal-resize-handle.resizing {
+  background: var(--primary);
+}
+
+.terminal-resize-handle::after {
+  content: '';
+  width: 36px;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 2px;
 }
 
 .terminal-header {
