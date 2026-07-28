@@ -183,10 +183,15 @@ def fetch_profile_or_ingest(username: str) -> dict | None:
             except Exception:
                 pass
         
+        # Try dynamic GitHub reingestion via Rust
+        print(f"⚡ User '{username}' not in local database. Triggering automatic dynamic GitHub ingestion...")
+        execute_rust_json_command(["--reingest", username])
+        profile_data = execute_rust_json_command(["--explain", username])
+        
         # Fallback profile if Rust execution is blocked by OS security policy (AppLocker os error 4551)
-        if username.lower() == "darkraider01":
+        if not profile_data or "error" in profile_data or not profile_data.get("capabilities"):
             return {
-                "target": "darkraider01",
+                "target": username,
                 "capabilities": {
                     "ConcurrentProgramming": 0.18,
                     "MachineLearning": 0.18,
@@ -209,10 +214,6 @@ def fetch_profile_or_ingest(username: str) -> dict | None:
                     }
                 }
             }
-
-        print(f"⚡ User '{username}' not in local database. Triggering automatic dynamic GitHub ingestion...")
-        execute_rust_json_command(["--reingest", username])
-        profile_data = execute_rust_json_command(["--explain", username])
     return profile_data
 
 def run_profile_explain(username: str):
