@@ -198,6 +198,22 @@ pub async fn extract_user_capabilities_full(
         });
     }
 
+    // Persist real per-repo capability scores before all_repo_signals is consumed below —
+    // this is what lets project vectors (e.g. job-fit cosine similarity) reflect which
+    // repo is actually strong at a capability instead of every evidence repo sharing the
+    // same user-wide aggregate number.
+    let repo_capability_scores = scoring::per_repo_capability_scores(
+        &all_repo_signals,
+        total_user_commits,
+        &weights,
+        signal_config.min_confidence,
+    );
+    if let Err(e) =
+        crate::extraction::storage::store_repo_capability_scores(pool, username, &repo_capability_scores).await
+    {
+        eprintln!("  ⚠️  Failed to persist per-repo capability scores: {}", e);
+    }
+
     // Aggregate all channels → final capabilities
     let cap_ids: Vec<&str> = registry.ids();
     let capabilities = scoring::aggregate_all_signals(

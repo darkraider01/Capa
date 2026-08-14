@@ -50,20 +50,45 @@ pub async fn explain_user(pool: &PgPool, username: &str, _gh: &GithubClient, jso
     let mut projects_map: BTreeMap<String, BTreeMap<String, f64>> = BTreeMap::new();
     let evidence_list: Vec<String> = Vec::new();
 
+    // Real per-repo capability strengths (see extraction::scoring::per_repo_capability_scores).
+    // Each repo gets its own score instead of every evidence repo sharing the same
+    // user-wide aggregate — this is what "best matching project" selection compares.
+    let repo_score_rows = sqlx::query(
+        "SELECT repo_name, capability_type, score FROM repo_capability_scores WHERE user_login = $1",
+    )
+    .bind(username)
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+
+    let mut has_real_score: std::collections::HashSet<(String, String)> = std::collections::HashSet::new();
+    for row in &repo_score_rows {
+        let repo_name: String = row.get("repo_name");
+        let capability_type: String = row.get("capability_type");
+        let score: f64 = row.get("score");
+        has_real_score.insert((repo_name.clone(), capability_type.clone()));
+        projects_map.entry(repo_name).or_default().insert(capability_type, score);
+    }
+
     for row in &rows {
         let cap_type: String = row.get("capability_type");
         let final_score: f64 = row.get("final_score");
         caps_map.insert(cap_type.clone(), final_score);
 
-        // Parse evidence_repos JSONB array to map capabilities to individual projects
+        // Parse evidence_repos JSONB array to map capabilities to individual projects.
+        // Only used as a fallback for repos ingested before repo_capability_scores existed —
+        // real per-repo rows (above) always take priority.
         let repos_json: Option<serde_json::Value> = row.try_get("evidence_repos").ok();
         if let Some(serde_json::Value::Array(repo_arr)) = repos_json {
             for repo_val in repo_arr {
                 if let Some(repo_name) = repo_val.as_str() {
-                    projects_map
-                        .entry(repo_name.to_string())
-                        .or_default()
-                        .insert(cap_type.clone(), final_score);
+                    let key = (repo_name.to_string(), cap_type.clone());
+                    if !has_real_score.contains(&key) {
+                        projects_map
+                            .entry(repo_name.to_string())
+                            .or_default()
+                            .insert(cap_type.clone(), final_score);
+                    }
                 }
             }
         }

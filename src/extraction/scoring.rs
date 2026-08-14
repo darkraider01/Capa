@@ -30,33 +30,31 @@ pub struct RepoSignals {
     pub commit_count: u64,
 }
 
-/// Aggregate all repo signals into final per-user capabilities
-pub fn aggregate_all_signals(
-    user_login: String,
-    repos: Vec<RepoSignals>,
-    total_user_commits: u64,
-    weights: &ScoringWeights,
-    capability_ids: &[&str],
-    min_confidence: f32,
-) -> Vec<ExtractedCapability> {
-    struct RepoCapSignal {
-        repo_name: String,
-        keyword: f32,
-        dependency: f32,
-        filename: f32,
-        structure: f32,
-        language: f32,
-        activity: f32,
-        penalty: f32,
-        total_signal: f32,
-        evidence_keywords: Vec<String>,
-        evidence_deps: Vec<String>,
-    }
+struct RepoCapSignal {
+    repo_name: String,
+    keyword: f32,
+    dependency: f32,
+    filename: f32,
+    structure: f32,
+    language: f32,
+    activity: f32,
+    penalty: f32,
+    total_signal: f32,
+    evidence_keywords: Vec<String>,
+    evidence_deps: Vec<String>,
+}
 
+/// Build the per-repo, per-capability signal breakdown shared by `aggregate_all_signals`
+/// (which averages the top-3 repos per capability into one user-wide number) and
+/// `per_repo_capability_scores` (which keeps every repo's own score intact).
+fn build_repo_cap_signals(
+    repos: &[RepoSignals],
+    weights: &ScoringWeights,
+) -> HashMap<String, Vec<RepoCapSignal>> {
     // Map: cap_id -> list of RepoCapSignal across repos
     let mut cap_repo_signals: HashMap<String, Vec<RepoCapSignal>> = HashMap::new();
 
-    for repo in &repos {
+    for repo in repos {
         let decay = repo.age_decay;
         let penalty = repo.negative_signal_penalty;
 
@@ -133,6 +131,75 @@ pub fn aggregate_all_signals(
                 });
         }
     }
+
+    cap_repo_signals
+}
+
+/// Real per-repo, per-capability strength — independent of the top-3-repo aggregate that
+/// `aggregate_all_signals` folds into one user-wide confidence score. Every repo that has
+/// any signal for a capability gets its own number here, on the same 0-1 scale as the
+/// aggregate `confidence` (same sigmoid + activity-normalization pipeline, just applied to
+/// one repo's signal instead of an averaged top-N). This is what makes per-project vectors
+/// (e.g. for job-fit cosine similarity) actually reflect which project is strong at what,
+/// instead of every evidence repo sharing the same aggregate number.
+pub fn per_repo_capability_scores(
+    repos: &[RepoSignals],
+    total_user_commits: u64,
+    weights: &ScoringWeights,
+    min_confidence: f32,
+) -> Vec<(String, String, f32)> {
+    let cap_repo_signals = build_repo_cap_signals(repos, weights);
+    let w = &weights.channels;
+    let mut out = Vec::new();
+
+    for (cap_id, contribs) in cap_repo_signals {
+        for c in contribs {
+            // Same "no real evidence" guard as aggregate_all_signals: keyword/dependency/
+            // filename/structure are the only channels that establish a capability is
+            // actually present. Without this, a repo with zero signal on all four still
+            // gets pushed through sigmoid(0, alpha, beta), which isn't 0 — it's the
+            // sigmoid's floor value (~0.25-0.27 pre-normalization here) — so every
+            // capability the repo has *no* evidence for would still get a phantom
+            // non-zero score, indistinguishable from genuinely weak-but-real evidence.
+            if c.keyword == 0.0 && c.dependency == 0.0 && c.filename == 0.0 && c.structure == 0.0 {
+                continue;
+            }
+
+            // Mirrors aggregate_all_signals: subtract this repo's own negative-keyword
+            // penalty, then amplify (never create from zero) with its language signal.
+            let raw_score = safe_f32((c.total_signal - c.penalty).max(0.0));
+            let lang_boost = if raw_score > 0.0 {
+                raw_score * c.language * w.language
+            } else {
+                0.0
+            };
+            let raw_with_lang = safe_f32(raw_score + lang_boost);
+            let sigmoid_confidence = apply_sigmoid(raw_with_lang, weights.alpha, weights.beta);
+            let normalized = safe_f32(apply_activity_normalization(
+                sigmoid_confidence,
+                total_user_commits,
+                weights.normalization_factor,
+            ));
+
+            if normalized >= min_confidence {
+                out.push((c.repo_name, cap_id.clone(), normalized));
+            }
+        }
+    }
+
+    out
+}
+
+/// Aggregate all repo signals into final per-user capabilities
+pub fn aggregate_all_signals(
+    user_login: String,
+    repos: Vec<RepoSignals>,
+    total_user_commits: u64,
+    weights: &ScoringWeights,
+    capability_ids: &[&str],
+    min_confidence: f32,
+) -> Vec<ExtractedCapability> {
+    let cap_repo_signals = build_repo_cap_signals(&repos, weights);
 
     // Accumulators per capability (averaged over effective Top-N repo count)
     let mut cap_keyword: HashMap<String, f32> = HashMap::new();

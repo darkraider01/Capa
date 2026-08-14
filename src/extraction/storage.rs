@@ -104,6 +104,35 @@ pub async fn store_capabilities(pool: &PgPool, capabilities: &[ExtractedCapabili
     Ok(())
 }
 
+/// Persist real per-repo, per-capability scores (see `scoring::per_repo_capability_scores`).
+/// Each entry is (repo_name, capability_type, score).
+pub async fn store_repo_capability_scores(
+    pool: &PgPool,
+    user_login: &str,
+    scores: &[(String, String, f32)],
+) -> Result<()> {
+    let now = chrono::Utc::now().timestamp();
+    for (repo_name, capability_type, score) in scores {
+        sqlx::query(
+            r#"
+            INSERT INTO repo_capability_scores (user_login, repo_name, capability_type, score, created_at)
+            VALUES ($1, $2, $3, $4, $5)
+            ON CONFLICT (user_login, repo_name, capability_type) DO UPDATE SET
+                score = EXCLUDED.score,
+                created_at = EXCLUDED.created_at
+            "#,
+        )
+        .bind(user_login)
+        .bind(repo_name)
+        .bind(capability_type)
+        .bind(safe_f32(*score))
+        .bind(now)
+        .execute(pool)
+        .await?;
+    }
+    Ok(())
+}
+
 /// Load all capabilities from database (for multi-entity indexing)
 pub async fn load_all_capabilities(pool: &PgPool) -> Result<Vec<ExtractedCapability>> {
     let rows = sqlx::query(

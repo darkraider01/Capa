@@ -24,15 +24,17 @@ async fn derive_user_experience_tier(
     username: &str,
 ) -> crate::calibration::ExperienceTier {
     use sqlx::Row;
+    // SUM() over a BIGINT column returns NUMERIC in Postgres (unlike COUNT(), which stays
+    // BIGINT), so decoding straight into i64 without the cast panics via Row::get.
     let repo_stats = sqlx::query(
-        "SELECT COUNT(*) as repo_count, COALESCE(SUM(stars), 0) as star_count FROM repositories WHERE user_login = $1",
+        "SELECT COUNT(*) as repo_count, COALESCE(SUM(stars), 0)::BIGINT as star_count FROM repositories WHERE user_login = $1",
     )
     .bind(username)
     .fetch_one(pool)
     .await;
 
     let commit_stats = sqlx::query(
-        "SELECT COALESCE(SUM(commit_count), 0) as commit_count FROM repositories WHERE user_login = $1",
+        "SELECT COALESCE(SUM(commit_count), 0)::BIGINT as commit_count FROM repositories WHERE user_login = $1",
     )
     .bind(username)
     .fetch_one(pool)
@@ -324,6 +326,30 @@ async fn main() -> Result<()> {
     .execute(&pool)
     .await?;
 
+    // Real per-repo, per-capability scores (distinct from `capabilities`, which is one
+    // aggregate row per user+capability). Without this, every repo listed as evidence for
+    // a capability shared the same user-wide aggregate score, so "best matching project"
+    // selection couldn't tell a repo that's genuinely strong at something apart from one
+    // that just happens to be tagged with it.
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS repo_capability_scores (
+            user_login TEXT NOT NULL,
+            repo_name TEXT NOT NULL,
+            capability_type TEXT NOT NULL,
+            score FLOAT NOT NULL,
+            created_at BIGINT NOT NULL,
+            PRIMARY KEY (user_login, repo_name, capability_type),
+            FOREIGN KEY (user_login) REFERENCES users(github_login)
+        )
+        "#,
+    )
+    .execute(&pool)
+    .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_repo_cap_scores_user ON repo_capability_scores(user_login)")
+        .execute(&pool)
+        .await?;
+
     // Ensure normalized_score column exists (migration)
     sqlx::query("ALTER TABLE capabilities ADD COLUMN IF NOT EXISTS normalized_score FLOAT NOT NULL DEFAULT 0")
         .execute(&pool)
@@ -376,6 +402,9 @@ async fn main() -> Result<()> {
             .execute(&pool)
             .await?;
         sqlx::query("DELETE FROM capabilities;")
+            .execute(&pool)
+            .await?;
+        sqlx::query("DELETE FROM repo_capability_scores;")
             .execute(&pool)
             .await?;
     }
@@ -579,6 +608,8 @@ async fn main() -> Result<()> {
             sqlx::query("DELETE FROM capability_vectors WHERE entity_id = $1")
                 .bind(&target).execute(&pool).await?;
             sqlx::query("DELETE FROM capabilities WHERE user_login = $1")
+                .bind(&target).execute(&pool).await?;
+            sqlx::query("DELETE FROM repo_capability_scores WHERE user_login = $1")
                 .bind(&target).execute(&pool).await?;
             sqlx::query(
                 "DELETE FROM commits WHERE repo_id IN \

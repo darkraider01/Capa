@@ -473,6 +473,11 @@ def compute_cosine_similarity(v1: dict, v2: dict) -> float:
         return 0.0
     return max(0.0, min(1.0, dot / (norm1 * norm2)))
 
+def compute_dot_product(v1: dict, v2: dict) -> float:
+    """Raw alignment strength between two capability vectors (unnormalized)."""
+    keys = set(v1.keys()).union(set(v2.keys()))
+    return sum(v1.get(k, 0.0) * v2.get(k, 0.0) for k in keys)
+
 def run_evaluate_fit(username: str, job_description: str):
     print(f"🎯 Evaluating fit for {username}...")
 
@@ -531,24 +536,49 @@ Capability Registry:
         valid_projects["Aggregate GitHub Profile"] = agg_caps
         is_fallback = True
 
-    # Step 3: Compute Cosine Similarity between J and EACH candidate project vector P_k
+    # Step 3: Rank candidate projects by a blend of cosine similarity (direction) and
+    # dot product (alignment strength). Pure cosine only measures angle, so a project
+    # doing many other things gets penalized for it even when its actual evidence for
+    # what the job needs is stronger than a narrow, single-capability repo pointed the
+    # same direction — a small repo touching only WebBackendAPI can out-rank a much more
+    # substantial project with higher WebBackendAPI *and* other required capabilities,
+    # purely because the bigger project's vector has more dimensions diluting its norm.
+    # Multiplying by the raw dot product brings magnitude back in, so winning requires
+    # both good alignment and substantive evidence, not just narrow focus.
     project_sims = []
     for repo_name, p_vector in valid_projects.items():
         sim = compute_cosine_similarity(job_vector, p_vector)
-        project_sims.append((repo_name, sim, p_vector))
+        alignment = compute_dot_product(job_vector, p_vector)
+        project_sims.append((repo_name, sim, alignment, p_vector))
 
-    # Sort projects by similarity score descending
-    project_sims.sort(key=lambda x: x[1], reverse=True)
+    # Sort by the blended score; ties broken by cosine similarity.
+    project_sims.sort(key=lambda x: (x[1] * x[2], x[1]), reverse=True)
 
-    best_repo_name, max_sim, best_p_vector = project_sims[0]
+    best_repo_name, max_sim, _, best_p_vector = project_sims[0]
     calculated_match_score = min(100, max(0, round(max_sim * 100)))
 
     # Step 4: Derive Strengths & Relative Missing mathematically
     max_j = max(job_vector.values()) if job_vector else 1.0
 
-    # Strengths: Top categories by P_best[c] / J[c] ratio where J[c] >= 0.2 * max_j and P_best[c] > 0.05
+    # Missing: J[c] >= 0.25 * max_j AND P_best[c] < 0.3 * J[c]
+    # Computed before strengths so a capability the job needs a lot more of can never
+    # also be listed as a strength (see Strengths below).
+    derived_missing = []
+    for cap_id, j_weight in job_vector.items():
+        if j_weight >= 0.25 * max_j:
+            p_score = best_p_vector.get(cap_id, 0.0)
+            if p_score < 0.3 * j_weight:
+                derived_missing.append(cap_id)
+
+    # Strengths: Top categories by P_best[c] / J[c] ratio where J[c] >= 0.2 * max_j and P_best[c] > 0.05.
+    # The strength floor (0.05) is absolute while the missing threshold (0.3 * j_weight) is
+    # relative to the job's requirement, so their ranges overlap for any j_weight above ~0.17 —
+    # without excluding derived_missing here, a capability could be flagged as both a strength
+    # and a gap at once (weak-but-nonzero candidate evidence against a demanding requirement).
     strength_candidates = []
     for cap_id, j_weight in job_vector.items():
+        if cap_id in derived_missing:
+            continue
         if j_weight >= 0.2 * max_j:
             p_score = best_p_vector.get(cap_id, 0.0)
             if p_score > 0.05:
@@ -558,15 +588,10 @@ Capability Registry:
     strength_candidates.sort(key=lambda x: x[1], reverse=True)
     derived_strengths = [s[0] for s in strength_candidates[:3]]
     if not derived_strengths:
-        derived_strengths = [cap for cap, score in sorted(best_p_vector.items(), key=lambda x: x[1], reverse=True)[:2]]
-
-    # Missing: J[c] >= 0.25 * max_j AND P_best[c] < 0.3 * J[c]
-    derived_missing = []
-    for cap_id, j_weight in job_vector.items():
-        if j_weight >= 0.25 * max_j:
-            p_score = best_p_vector.get(cap_id, 0.0)
-            if p_score < 0.3 * j_weight:
-                derived_missing.append(cap_id)
+        derived_strengths = [
+            cap for cap, score in sorted(best_p_vector.items(), key=lambda x: x[1], reverse=True)
+            if cap not in derived_missing
+        ][:2]
 
     # Step 5: Prompt Gemini for natural language report synthesis
     fallback_note = " (evaluated via aggregate profile due to sparse individual repos)" if is_fallback else ""
