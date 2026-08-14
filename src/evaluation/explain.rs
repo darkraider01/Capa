@@ -1,7 +1,7 @@
 use anyhow::Result;
 use sqlx::{PgPool, Row};
 use crate::github_client::GithubClient;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use serde_json::json;
 
 pub async fn explain_user(pool: &PgPool, username: &str, _gh: &GithubClient, json_mode: bool) -> Result<()> {
@@ -42,8 +42,12 @@ pub async fn explain_user(pool: &PgPool, username: &str, _gh: &GithubClient, jso
         return Ok(());
     }
 
-    let mut caps_map: HashMap<String, f64> = HashMap::new();
-    let mut projects_map: HashMap<String, HashMap<String, f64>> = HashMap::new();
+    // BTreeMap (not HashMap) so the serialized JSON has a deterministic key order —
+    // HashMap's iteration order is randomized per-process, which was silently
+    // changing the prompt text sent to Gemini (and thus its sha256 cache key) on
+    // every `cargo run`, even when the underlying capability scores were identical.
+    let mut caps_map: BTreeMap<String, f64> = BTreeMap::new();
+    let mut projects_map: BTreeMap<String, BTreeMap<String, f64>> = BTreeMap::new();
     let evidence_list: Vec<String> = Vec::new();
 
     for row in &rows {

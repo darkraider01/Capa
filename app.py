@@ -7,7 +7,25 @@ from flask_cors import CORS
 from ai_pipeline import execute_rust_json_command
 
 app = Flask(__name__, static_folder="static", template_folder="templates")
-CORS(app)
+
+# The UI is served from this same app, so it never needs CORS to talk to /api/*.
+# CORS only matters here for letting *other* origins call these routes, which is
+# exactly what we don't want open by default — every route below spends real money
+# (a Gemini call) and CPU (a subprocess) per request. Only enable it, and only for
+# explicitly listed origins, via ALLOWED_ORIGINS (comma-separated) in .env.
+_allowed_origins = [o.strip() for o in os.environ.get("ALLOWED_ORIGINS", "").split(",") if o.strip()]
+if _allowed_origins:
+    CORS(app, origins=_allowed_origins)
+
+# Optional shared-secret gate for /api/*. Unset by default so local/dev use is
+# unaffected; set API_KEY in .env before exposing this app beyond localhost.
+API_KEY = os.environ.get("API_KEY")
+
+@app.before_request
+def _require_api_key():
+    if API_KEY and request.path.startswith("/api/"):
+        if request.headers.get("X-API-Key") != API_KEY:
+            return jsonify({"success": False, "error": "Unauthorized"}), 401
 
 def run_ai_pipeline(args):
     """Utility to run the Python ai_pipeline.py script with given arguments."""
@@ -103,4 +121,11 @@ def api_capabilities():
         return jsonify({"success": False, "error": "Failed to load capabilities"})
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    # Defaults are the safe posture: localhost-only, debug off (the Werkzeug debugger
+    # is a remote-code-execution vector if it's reachable from anywhere but the machine
+    # running it). Override via .env only once you've set API_KEY and, if needed,
+    # ALLOWED_ORIGINS above.
+    debug_mode = os.environ.get("FLASK_DEBUG", "false").lower() == "true"
+    host = os.environ.get("FLASK_HOST", "127.0.0.1")
+    port = int(os.environ.get("FLASK_PORT", "5000"))
+    app.run(host=host, port=port, debug=debug_mode)

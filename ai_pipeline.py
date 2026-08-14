@@ -1,10 +1,18 @@
 import os
+import re
 import sys
 import json
 import hashlib
 import subprocess
 from pathlib import Path
 from dotenv import load_dotenv
+
+# GitHub-username-shaped check (alnum + single internal hyphens, <=39 chars).
+# Used to keep untrusted usernames out of filesystem paths (snapshots/<username>.json).
+USERNAME_RE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$")
+
+def is_safe_username(username: str) -> bool:
+    return bool(USERNAME_RE.match(username))
 
 # Ensure stdout uses utf-8 on Windows for emojis
 if sys.stdout.encoding.lower() != 'utf-8':
@@ -69,8 +77,11 @@ def query_gemini(prompt: str, system_instruction: str, schema: BaseModel = None)
     if not ACTIVE_AI:
         return ""
 
-    # Hash the payload to prevent double-billing
-    cache_path = get_cache_path(prompt, system_instruction)
+    # Hash the payload to prevent double-billing. The schema name is folded into the
+    # hash so two calls that happen to share identical prompt+system text but expect
+    # differently-shaped responses can never collide on the same cache file.
+    schema_name = schema.__name__ if schema else ""
+    cache_path = get_cache_path(prompt, system_instruction, schema_name)
     cached_response = fetch_cached_response(cache_path)
     
     if cached_response is not None:
@@ -174,45 +185,36 @@ def get_registry_definitions() -> str:
 def fetch_profile_or_ingest(username: str) -> dict | None:
     profile_data = execute_rust_json_command(["--explain", username])
     if not profile_data or "error" in profile_data or not profile_data.get("capabilities"):
-        # Check if local snapshot file exists
-        snap_path = Path(f"snapshots/{username}.json")
-        if snap_path.exists():
-            try:
-                with open(snap_path, "r", encoding="utf-8") as f:
-                    return json.load(f)
-            except Exception:
-                pass
-        
+        # Check if local snapshot file exists. Reject anything that isn't a plausible
+        # GitHub username first — this string reaches a filesystem path unescaped, and
+        # without this check "../../whatever" would let a caller read arbitrary
+        # JSON-parseable files outside snapshots/.
+        if is_safe_username(username):
+            snap_path = Path(f"snapshots/{username}.json")
+            if snap_path.exists():
+                try:
+                    with open(snap_path, "r", encoding="utf-8") as f:
+                        return json.load(f)
+                except Exception:
+                    pass
+
         # Try dynamic GitHub reingestion via Rust
         print(f"⚡ User '{username}' not in local database. Triggering automatic dynamic GitHub ingestion...")
         execute_rust_json_command(["--reingest", username])
         profile_data = execute_rust_json_command(["--explain", username])
-        
-        # Fallback profile if Rust execution is blocked by OS security policy (AppLocker os error 4551)
+
+        # If the analysis engine still returns nothing (DB unreachable, GitHub ingestion
+        # failed, or the Rust binary was blocked by a local security policy such as
+        # AppLocker/WDAC), fail loudly instead of silently substituting a fabricated
+        # capability profile — a fake score is worse than no score.
         if not profile_data or "error" in profile_data or not profile_data.get("capabilities"):
             return {
-                "target": username,
-                "capabilities": {
-                    "ConcurrentProgramming": 0.18,
-                    "MachineLearning": 0.18,
-                    "WebBackendAPI": 0.17,
-                    "DatabaseUsage": 0.17,
-                    "SystemsArchitecture": 0.16,
-                    "SearchEngineIndexing": 0.14
-                },
-                "projects": {
-                    "Capa": {
-                        "ConcurrentProgramming": 0.85,
-                        "WebBackendAPI": 0.80,
-                        "DatabaseUsage": 0.75,
-                        "SystemsArchitecture": 0.70,
-                        "SearchEngineIndexing": 0.65
-                    },
-                    "smart-ml": {
-                        "MachineLearning": 0.90,
-                        "DataPipelines": 0.75
-                    }
-                }
+                "error": (
+                    f"Could not compute a live capability profile for '{username}'. "
+                    "The analysis engine returned no data — verify PostgreSQL is running, "
+                    "GITHUB_TOKEN is valid, and the Rust binary isn't being blocked by a "
+                    "local security policy (e.g. AppLocker/WDAC)."
+                )
             }
     return profile_data
 
@@ -347,7 +349,7 @@ Valid Capability Registry:
     try:
         parsed_query = json.loads(json_response)
         caps = parsed_query.get("capabilities", [])
-        conf = parsed_query.get("min_confidence", 0.5)
+        conf = parsed_query.get("min_confidence", 0.2)  # matches the documented default in the prompt above
         
         if not caps:
             print("No matching capabilities found for your query. Try being more specific.")
@@ -603,8 +605,11 @@ Generate the structured job-fit evaluation report."""
 
     try:
         result = json.loads(response)
-        score = result.get("match_score", calculated_match_score)
-        best_proj = result.get("best_matching_project", best_repo_name)
+        # match_score and best_matching_project are computed deterministically above —
+        # the generative layer is only asked to explain them, never to recompute them,
+        # so we never trust its copy of these two fields even if it echoes them back.
+        score = calculated_match_score
+        best_proj = best_repo_name
         strengths = result.get("strengths", derived_strengths)
         missing = result.get("missing", derived_missing)
         rec = result.get("recommendation", "")
